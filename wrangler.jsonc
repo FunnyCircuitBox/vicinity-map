@@ -14,5 +14,8 @@
     "binding": "ASSETS",
     "run_worker_first": ["/api/*"]
   },
+  // City claims database. Cloudflare creates it automatically on the first deploy;
+  // the tables are created by the code the first time they're used.
+  "d1_databases": [{ "binding": "DB", "database_name": "vicinity-claims" }],
   "observability": { "enabled": true }
 }
