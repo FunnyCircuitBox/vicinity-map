@@ -2,7 +2,7 @@
 
 **Represent your city.** A community map where every city gets its own page: check in, post local memes, vote weekly. Cities rank by community activity, not coin holdings.
 
-Live: https://vicinity-map.noyonsakibul.workers.dev
+Live: https://vicinitycity.net (backup address: https://vicinity-map.noyonsakibul.workers.dev)
 
 > **No token exists yet.** $VICINITY has not launched. No presale, no airdrop, no contract address. When it launches, the official address will be published in this README and on the website. Use the site's "Is this link really Vicinity?" checker if in doubt.
 
