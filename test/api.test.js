@@ -38,6 +38,9 @@ test("official list says no token and no socials yet", async () => {
 test("link checker: official site, official GitHub, fakes", async () => {
   const check = async (q) => (await (await handleApi(req("/api/check?q=" + encodeURIComponent(q)))).json()).verdict;
   assert.equal(await check("https://vicinity-map.noyonsakibul.workers.dev/"), "official");
+  assert.equal(await check("https://vicinitycity.net"), "official");
+  assert.equal(await check("www.vicinitycity.net/whatever"), "official");
+  assert.equal(await check("vicinitycity.net.evil.io"), "not_official");
   assert.equal(await check("github.com/FunnyCircuitBox/vicinity-map"), "official");
   assert.equal(await check("https://github.com/FunnyCircuitBox/vicinity-map-fake"), "not_official");
   assert.equal(await check("vicinity-airdrop.xyz"), "not_official");
