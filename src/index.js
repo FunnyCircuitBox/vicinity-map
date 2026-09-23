@@ -6,12 +6,16 @@
  *   GET  /api/official        → the official links list
  *   GET  /api/check?q=...     → "is this link / address / handle official?"
  *   GET  /api/message?address → the exact text a wallet signs to verify ownership
- *   POST /api/verify          → check a signed message from a Solana wallet
+ *   POST /api/verify          → check a signed message from a Solana wallet, then
+ *                               (after launch) check how much $VICINITY it holds
+ *   GET  /api/token           → live token facts (supply, minting/freezing disabled)
+ *   GET  /api/holders         → live top holders from the blockchain
  *
  * Everything else is served from /public by Cloudflare's static asset handler.
- * No database, no secrets, no stored wallet addresses.
+ * No database and no stored wallet addresses. Optional secret: SOLANA_RPC_URL.
  */
-import { OFFICIAL, checkOfficial } from "./official.js";
+import { OFFICIAL, VICINITY_MINT, checkOfficial } from "./official.js";
+import { getHolding, getTokenFacts, getTopHolders } from "./chain.js";
 import { base58Encode, buildMessage, isSolanaAddress, parseMessage, verifySignature } from "./solana.js";
 
 const SECURITY_HEADERS = {
@@ -40,7 +44,23 @@ function base64ToBytes(b64) {
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 }
 
-export async function handleVerify(request, now = Date.now()) {
+export const activeMint = (env) => (env && env.VICINITY_MINT) || VICINITY_MINT;
+
+/** Cache small JSON answers for a short time so we don't hammer the blockchain. */
+async function cached(key, seconds, produce) {
+  const cache = typeof caches !== "undefined" ? caches.default : null;
+  const req = new Request("https://cache.vicinity.internal/" + key);
+  if (cache) { const hit = await cache.match(req); if (hit) return hit; }
+  const res = await produce();
+  if (cache && res.status === 200) {
+    const copy = new Response(res.clone().body, res);
+    copy.headers.set("Cache-Control", `public, max-age=${seconds}`);
+    await cache.put(req, copy);
+  }
+  return res;
+}
+
+export async function handleVerify(request, env = {}, now = Date.now(), fetchImpl = fetch) {
   const len = Number(request.headers.get("content-length") || 0);
   if (len > MAX_BODY) return json({ verified: false, error: "too_large" }, 413);
   let body;
@@ -73,10 +93,24 @@ export async function handleVerify(request, now = Date.now()) {
   if (!ok) return json({ verified: false, error: "signature_mismatch" }, 401);
 
   console.log("wallet verified", address.slice(0, 4) + "…" + address.slice(-4));
-  return json({ verified: true, address, verifiedAt: new Date(now).toISOString() });
+  const out = { verified: true, address, verifiedAt: new Date(now).toISOString(), launched: false };
+  const mint = activeMint(env);
+  if (mint) {
+    out.launched = true;
+    try {
+      const amount = await getHolding(env, address, mint, fetchImpl);
+      out.holder = amount > 0;
+      out.amount = amount;
+      out.tier = amount > 0 ? "Founding Supporter" : null;
+    } catch (e) {
+      console.error("holding lookup failed", String(e));
+      out.holderCheck = "unavailable";
+    }
+  }
+  return json(out);
 }
 
-export async function handleApi(request) {
+export async function handleApi(request, env = {}, fetchImpl = fetch) {
   const url = new URL(request.url);
   const method = request.method;
   const only = (m) => (method === m ? null : json({ error: "method_not_allowed" }, 405));
@@ -89,7 +123,32 @@ export async function handleApi(request) {
     case "/api/check":
       return only("GET") || json(checkOfficial(url.searchParams.get("q"), isSolanaAddress));
     case "/api/verify":
-      return only("POST") || handleVerify(request);
+      return only("POST") || handleVerify(request, env, Date.now(), fetchImpl);
+    case "/api/token": {
+      const blocked = only("GET");
+      if (blocked) return blocked;
+      const mint = activeMint(env);
+      if (!mint) return json({ launched: false, registry: OFFICIAL.tokens });
+      return cached("token-" + mint, 60, async () => {
+        try { return json({ launched: true, registry: OFFICIAL.tokens, facts: await getTokenFacts(env, mint, fetchImpl) }); }
+        catch (e) { console.error("token facts failed", String(e)); return json({ launched: true, error: "chain_unavailable" }, 503); }
+      });
+    }
+    case "/api/holders": {
+      const blocked = only("GET");
+      if (blocked) return blocked;
+      const mint = activeMint(env);
+      if (!mint) return json({ launched: false, holders: [] });
+      return cached("holders-" + mint, 60, async () => {
+        try {
+          const { facts, holders } = await getTopHolders(env, mint, fetchImpl);
+          return json({ launched: true, mint, supply: facts.supply, holders, updatedAt: new Date().toISOString() });
+        } catch (e) {
+          console.error("holders failed", String(e));
+          return json({ launched: true, error: "chain_unavailable" }, 503);
+        }
+      });
+    }
     case "/api/message": {
       // Helper so the browser builds exactly the same text the server expects.
       const blocked = only("GET");
@@ -115,7 +174,7 @@ export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      if (url.pathname.startsWith("/api/")) return await handleApi(request);
+      if (url.pathname.startsWith("/api/")) return await handleApi(request, env);
       return withSecurityHeaders(await env.ASSETS.fetch(request));
     } catch (err) {
       console.error("Unhandled error:", err && err.stack ? err.stack : err);

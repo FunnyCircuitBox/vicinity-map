@@ -3,13 +3,21 @@
  * "Is this link official?" checker both read from here.
  * Change it only by a public commit so everyone can see the history.
  */
+// The $VICINITY mint address. Paste it here the moment the token launches (one line change).
+export const VICINITY_MINT = null;
+
 export const OFFICIAL = {
   updated: "2026-09-23", // vicinitycity.net is the main address
   websites: ["vicinitycity.net", "vicinity-map.noyonsakibul.workers.dev"],
-  github: ["github.com/funnycircuitbox/vicinity-map"],
+  github: [],             // code is private
   socials: [],            // none yet: any "Vicinity" social account is not us
-  tokenContract: null,    // not launched: no official contract address exists
-  teamWallets: [],        // none yet: will be listed before any launch
+  tokenContract: VICINITY_MINT,
+  teamWallets: [],        // every wallet the team controls, listed publicly
+  // Every official Vicinity token on every network. Anything not listed here is fake.
+  tokens: [
+    { network: "Solana", name: "Vicinity", symbol: "VICINITY", contract: VICINITY_MINT, platform: "pump.fun", status: "Launching soon" },
+    { network: "Solana", name: "City coins (one per city)", symbol: "e.g. $UTICA", contract: null, platform: "Vicinity Launchpad", status: "Phase 3" },
+  ],
 };
 
 const clean = (s) => String(s || "").trim().slice(0, 300);
