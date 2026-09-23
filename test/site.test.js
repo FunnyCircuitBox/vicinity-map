@@ -41,3 +41,11 @@ test("wallet section: no seed phrase, signing is not a transaction", () => {
   assert.match(html, /never ask for your recovery phrase/);
   assert.match(html, /isn't a transaction/);
 });
+
+test("claim-your-city section: rules are stated plainly, location is not kept", () => {
+  for (const id of ["cities", "city-canvas", "city-q", "claim-btn", "add-form"]) assert.ok(html.includes(`id="${id}"`), id);
+  assert.match(html, /One wallet\. One city\./);
+  assert.match(html, /1,000,000\+ \$VICINITY/);
+  assert.match(html, /never save it/);
+  assert.match(html, /GeoNames/);
+});
