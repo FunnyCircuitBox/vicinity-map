@@ -1,10 +1,14 @@
-// Cloudflare settings for Vicinity Map.
-// "main" = the backend code. "assets" = the public website files.
+// Cloudflare settings for Vicinity.
+// "main" = backend code. "assets" = public website files.
+// "build" runs before every deploy: fonts are copied in, then every test must pass.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "vicinity-map",
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "build": { "command": "npm run build" },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
