@@ -146,3 +146,5 @@ vite.config.ts.timestamp-*
 .dev.vars.*
 !.dev.vars.example
 .wrangler/
+# Fonts are copied in at build time (scripts/copy-fonts.mjs)
+public/fonts/
