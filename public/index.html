@@ -29,6 +29,7 @@
         <a href="#story">How it works</a>
         <a href="#token">Token</a>
         <a href="#holders">Holders</a>
+        <a href="#cities">Claim city</a>
         <a href="#launchpad">Launchpad</a>
         <a href="#wallet">Verify</a>
       </nav>
@@ -301,7 +302,7 @@
             <li><strong>Sign</strong> one message. It's free and it isn't a transaction.</li>
             <li><strong>Get your badge.</strong> Holders become Founding Supporters.</li>
           </ol>
-          <p class="tiny muted">We don't save your wallet address. Vicinity will never ask for your recovery phrase.</p>
+          <p class="tiny muted">Verifying never saves your wallet address. Vicinity will never ask for your recovery phrase.</p>
         </div>
 
         <div class="wallet card-glass reveal" id="wallet-panel" aria-live="polite">
@@ -350,10 +351,81 @@
         </div>
         <div class="grid-3">
           <div class="card-glass reveal perk"><span class="perk__icon">🚀</span><h3>Early access</h3><p class="muted">Founding Supporters get into the Launchpad before everyone else.</p></div>
-          <div class="card-glass reveal perk"><span class="perk__icon">📍</span><h3>First claim on your city</h3><p class="muted">First chance to launch your own city's coin before the name is taken.</p></div>
+          <div class="card-glass reveal perk"><span class="perk__icon">📍</span><h3>First claim on your city</h3><p class="muted">City Founders get first right to launch their city's coin. <a href="#cities">Claim yours ↓</a></p></div>
           <div class="card-glass reveal perk"><span class="perk__icon">🏅</span><h3>Founding badge</h3><p class="muted">A permanent Founding Supporter badge on your city page.</p></div>
         </div>
         <p class="note reveal">No sign-up needed. Founding Supporters are picked by an on-chain snapshot of $VICINITY holders. The snapshot time is announced ahead of time on this site.</p>
+      </div>
+    </section>
+
+    <!-- ============ CLAIM YOUR CITY ============ -->
+    <section class="section section--glow" id="cities">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Claim your city</p>
+          <h2>One wallet. One city. Be its founder.</h2>
+          <p class="muted">Every major city in every country is on the map. Claim yours and you become its <strong>City Founder</strong>: your wallet on the city page and first right to launch its coin when the Vicinity Launchpad opens.</p>
+        </div>
+
+        <div class="city-stats reveal" aria-live="polite">
+          <div><strong id="cs-cities">…</strong><span>cities listed</span></div>
+          <div><strong id="cs-countries">…</strong><span>countries</span></div>
+          <div><strong id="cs-claimed">…</strong><span>claimed so far</span></div>
+          <div><strong id="cs-status">…</strong><span>claims</span></div>
+        </div>
+
+        <div class="citymap card-glass reveal">
+          <canvas id="city-canvas" width="1200" height="480" role="img" aria-label="World map of every listed city. Orange dots are claimed cities."></canvas>
+          <p class="citymap__tip" id="city-tip" hidden></p>
+          <p class="citymap__legend"><span><span class="dot dot--open"></span> Open</span><span><span class="dot dot--claimed"></span> Claimed</span><span><span class="dot dot--mine"></span> Yours</span><span>Tap a dot to pick that city</span></p>
+        </div>
+
+        <div class="citybox">
+          <div class="city-search card-glass reveal">
+            <div class="city-search__row">
+              <label class="sr-only" for="city-q">Search cities</label>
+              <input id="city-q" type="search" autocomplete="off" spellcheck="false" maxlength="60" placeholder="Search a city, e.g. Utica, Dhaka, Lagos">
+              <label class="sr-only" for="city-country">Country</label>
+              <select id="city-country"><option value="">All countries</option></select>
+              <label class="sr-only" for="city-filter">Show</label>
+              <select id="city-filter"><option value="all">All</option><option value="open">Open</option><option value="claimed">Claimed</option></select>
+            </div>
+            <ul class="city-list" id="city-list" aria-live="polite"><li class="muted">Loading the world…</li></ul>
+            <p class="tiny muted" id="city-count"></p>
+            <button class="link-btn" type="button" id="city-add-open">Can't find your city? Add it →</button>
+          </div>
+
+          <div class="claim card-glass reveal" id="claim-panel" aria-live="polite">
+            <p class="kicker" id="claim-kicker">Pick a city</p>
+            <h3 id="claim-title">Search or tap the map</h3>
+            <p class="muted small" id="claim-sub">Choose the city you live in. You can only claim one, so choose well.</p>
+
+            <form id="add-form" class="add-form" hidden novalidate>
+              <label for="add-name">City name</label>
+              <input id="add-name" type="text" maxlength="60" autocomplete="off" placeholder="e.g. New Hartford">
+              <label for="add-country">Country</label>
+              <select id="add-country"></select>
+              <p class="tiny muted">The city is placed where you are right now (rounded to about 10 km). Adding a city also claims it for you.</p>
+            </form>
+
+            <ol class="reqs" id="claim-reqs">
+              <li data-req="wallet"><span class="req__dot"></span><div><strong>Connect your wallet</strong><p class="tiny muted" id="req-wallet-text">Any Solana wallet. <a href="#wallet">Connect here</a>.</p></div></li>
+              <li data-req="hold"><span class="req__dot"></span><div><strong>Hold 1,000,000+ $VICINITY</strong><p class="tiny muted">Checked live on the blockchain when you claim. Keep holding: claims are re-checked at the Launchpad snapshot.</p></div></li>
+              <li data-req="here"><span class="req__dot"></span><div><strong>Be in the city</strong><p class="tiny muted" id="req-here-text">Share your location once. We only check you're inside the city (25 km, or 50 km for cities over 1M people) and never save it.</p></div></li>
+              <li data-req="follow" id="req-follow" hidden><span class="req__dot"></span><div><strong>Follow Vicinity on X</strong><p class="tiny muted"><a id="follow-link" href="#" target="_blank" rel="noopener">Open X ↗</a> <label class="inline-check"><input type="checkbox" id="follow-ok"> I followed</label></p></div></li>
+              <li data-req="sign"><span class="req__dot"></span><div><strong>Sign one message</strong><p class="tiny muted">Free, not a transaction, can't move funds.</p></div></li>
+            </ol>
+
+            <button class="btn btn--primary btn--block" type="button" id="claim-btn" disabled>Pick a city first</button>
+            <p class="wallet__error" id="claim-error" role="alert" hidden></p>
+            <div class="claim-done" id="claim-done" hidden>
+              <div class="verified-badge is-gold" aria-hidden="true">📍</div>
+              <h3 id="claim-done-title">You're the founder</h3>
+              <p class="small" id="claim-done-text"></p>
+            </div>
+          </div>
+        </div>
+        <p class="tiny muted reveal">Claimed cities show the claiming wallet publicly, like a name on a leaderboard. Just verifying a wallet never saves it. City data: <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0).</p>
       </div>
     </section>
 
@@ -391,7 +463,7 @@
           <h2>Where Vicinity is going</h2>
         </div>
         <ol class="timeline" id="timeline">
-          <li class="timeline__item is-done reveal"><span class="timeline__status">Done</span><h3>Foundation</h3><p>Website, wallet verification, live holder tools and the official token checker.</p></li>
+          <li class="timeline__item is-done reveal"><span class="timeline__status">Done</span><h3>Foundation</h3><p>Website, wallet verification, live holder tools, the official token checker and city claims.</p></li>
           <li class="timeline__item is-next reveal"><span class="timeline__status">Next</span><h3>$VICINITY launch</h3><p>Fair launch on pump.fun. Contract address published here first.</p></li>
           <li class="timeline__item reveal"><span class="timeline__status">Then</span><h3>The map</h3><p>City pages, check-ins, local memes and weekly votes.</p></li>
           <li class="timeline__item reveal"><span class="timeline__status">Then</span><h3>Vicinity Passport</h3><p>Collect stamps for visiting local places.</p></li>
@@ -408,8 +480,11 @@
         <details class="reveal"><summary>How do I become a Founding Supporter?</summary><p>Hold $VICINITY. That's it. Supporters are picked by an on-chain snapshot, so there's nothing to sign up for. You can check your status anytime with "Verify" above.</p></details>
         <details class="reveal"><summary>Is this a rug pull?</summary><p>No. Minting and freezing are switched off, liquidity is burned when it graduates on pump.fun, and every team wallet is listed here. You can check all of it live on the blockchain.</p></details>
         <details class="reveal"><summary>Which contract address is real?</summary><p>Only the one shown on this page and in the official token list. Paste any address into the checker to confirm.</p></details>
-        <details class="reveal"><summary>Is verifying my wallet safe?</summary><p>Yes. You only sign a plain message, which can't move funds, and we don't save your address.</p></details>
-        <details class="reveal"><summary>What location data do you keep?</summary><p>Only the name of your city, never your exact position.</p></details>
+        <details class="reveal"><summary>Is verifying my wallet safe?</summary><p>Yes. You only sign a plain message, which can't move funds, and verifying doesn't save your address.</p></details>
+        <details class="reveal"><summary>How do I claim my city?</summary><p>Hold at least 1,000,000 $VICINITY, be in the city, and sign one free message. One wallet can claim one city, and each city has one founder. Claiming costs nothing.</p></details>
+        <details class="reveal"><summary>What does a City Founder get?</summary><p>Your wallet shown as the founder on the city page, and first right to launch your city's coin when the Vicinity Launchpad opens. Claims are re-checked at the Launchpad snapshot, so keep holding 1,000,000+ $VICINITY.</p></details>
+        <details class="reveal"><summary>My city isn't listed. What now?</summary><p>Use "Add it" in the city search. You need to be there, and the new city is claimed by you.</p></details>
+        <details class="reveal"><summary>What location data do you keep?</summary><p>None from you. Your location is used once to check you're inside the city, then thrown away. A city you add gets a center point rounded to about 10 km.</p></details>
       </div></div>
     </section>
   </main>

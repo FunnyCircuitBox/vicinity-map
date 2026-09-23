@@ -371,3 +371,49 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 .perk__icon { font-size: 1.8rem; display: block; margin-bottom: 10px; }
 .perk p { margin: 0; }
 #launchpad .note { margin-top: 24px; }
+
+/* ---------- claim your city ---------- */
+.city-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 8px 0 22px; }
+.city-stats div { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+.city-stats strong { display: block; font: 650 1.6rem/1.1 var(--display); letter-spacing: -.02em; }
+.city-stats span { color: var(--muted); font-size: .82rem; }
+.citymap { position: relative; padding: 14px; margin-bottom: 22px; overflow: hidden; }
+.citymap canvas { width: 100%; height: auto; aspect-ratio: 5 / 2; display: block; border-radius: 14px; background: radial-gradient(120% 90% at 50% 40%, #0F1D33, #070E19); cursor: crosshair; touch-action: manipulation; }
+.citymap__tip { position: absolute; pointer-events: none; background: rgba(7,14,25,.92); border: 1px solid var(--line-2); border-radius: 10px; padding: 6px 10px; font-size: .82rem; margin: 0; white-space: nowrap; transform: translate(-50%, calc(-100% - 12px)); }
+.citymap__legend { font-size: .8rem; color: var(--muted); margin: 10px 4px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 2px; }
+.dot--open { background: #7FA3D6; } .dot--claimed { background: var(--pin); box-shadow: 0 0 8px var(--pin); } .dot--mine { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.citybox { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; margin-bottom: 18px; }
+.city-search__row { display: flex; gap: 8px; flex-wrap: wrap; }
+.city-search input, .city-search select, .add-form input, .add-form select { background: var(--card-2); border: 1px solid var(--line-2); color: var(--text); border-radius: 12px; font: 500 .98rem var(--body); padding: 11px 12px; outline: none; }
+.city-search input { flex: 1 1 220px; min-width: 0; }
+.city-search select { flex: 0 1 auto; max-width: 100%; }
+.city-search input:focus, .city-search select:focus, .add-form input:focus, .add-form select:focus { border-color: var(--pin-2); }
+.city-search select option, .add-form select option { background: var(--bg-2); }
+.city-list { list-style: none; margin: 14px 0 6px; padding: 0; max-height: 440px; overflow-y: auto; }
+.city-list li { border-bottom: 1px solid var(--line); }
+.city-row { width: 100%; display: flex; align-items: center; gap: 10px; background: none; border: 0; color: var(--text); text-align: left; padding: 11px 6px; border-radius: 10px; cursor: pointer; font: inherit; }
+.city-row:hover, .city-row.is-selected { background: var(--card-2); }
+.city-row__name { flex: 1; min-width: 0; }
+.city-row__name strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.city-row__name span { color: var(--muted); font-size: .8rem; }
+.city-row .tag { flex: none; }
+.claim h3 { font-size: 1.5rem; }
+.reqs { list-style: none; padding: 0; margin: 18px 0; display: grid; gap: 12px; }
+.reqs li { display: flex; gap: 12px; align-items: flex-start; }
+.reqs li p { margin: 2px 0 0; }
+.req__dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-2); margin-top: 2px; display: grid; place-items: center; font-size: .75rem; font-weight: 800; }
+.reqs li.is-ok .req__dot { background: var(--moss); border-color: var(--moss); color: #062017; }
+.reqs li.is-ok .req__dot::after { content: "✓"; }
+.reqs li.is-bad .req__dot { border-color: #FF9D80; color: #FF9D80; }
+.reqs li.is-bad .req__dot::after { content: "!"; }
+.inline-check { display: inline-flex; gap: 6px; align-items: center; margin-left: 10px; cursor: pointer; }
+.add-form { display: grid; gap: 6px; margin: 14px 0 4px; }
+.add-form label { font-size: .85rem; color: var(--muted); }
+.claim-done { text-align: center; margin-top: 10px; }
+.claim-done .verified-badge { margin: 0 auto 14px; }
+#claim-btn:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+@media (max-width: 900px) { .citybox { grid-template-columns: 1fr; } .city-stats { grid-template-columns: repeat(2, 1fr); } }
+#claim-btn { white-space: normal; text-align: center; line-height: 1.25; padding-top: 10px; padding-bottom: 10px; }
+.citybox > * { min-width: 0; } .city-search select { min-width: 0; width: auto; } @media (max-width: 520px) { .city-search select { flex: 1 1 40%; } }
+#claim-panel, #cities { scroll-margin-top: 84px; }
