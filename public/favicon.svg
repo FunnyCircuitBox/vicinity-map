@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Vicinity">
+  <circle cx="32" cy="36" r="26" fill="none" stroke="#FF5A36" stroke-width="2.5" opacity=".25"/>
+  <circle cx="32" cy="36" r="17" fill="none" stroke="#FF5A36" stroke-width="2.5" opacity=".5"/>
+  <path d="M32 6c-8.3 0-15 6.5-15 14.6C17 31.5 32 46 32 46s15-14.5 15-25.4C47 12.5 40.3 6 32 6z" fill="#FF5A36"/>
+  <circle cx="32" cy="20.5" r="5.5" fill="#FFF8F0"/>
+</svg>
