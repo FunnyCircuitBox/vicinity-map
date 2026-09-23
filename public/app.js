@@ -334,13 +334,28 @@
       const d = await r.json();
       if (!d.verified) throw new Error(d.error || "failed");
       $("#addr-verified").textContent = short(address);
-      show("verified"); toast("Wallet verified ✓");
+      const badge = $("#badge-icon"), title = $("#verify-title"), detail = $("#verify-detail");
+      badge.classList.remove("is-gold", "is-plain");
+      if (!d.launched) {
+        badge.textContent = "✓"; title.textContent = "Wallet verified";
+        detail.textContent = "$VICINITY isn't live yet. Come back after launch and your holder status will show here.";
+      } else if (d.holder) {
+        badge.textContent = "🏅"; badge.classList.add("is-gold"); title.textContent = "Founding Supporter";
+        detail.textContent = `You hold ${fmt(d.amount)} $VICINITY. You're in line for early access to the Vicinity Launchpad.`;
+      } else if (d.holderCheck === "unavailable") {
+        badge.textContent = "✓"; title.textContent = "Wallet verified";
+        detail.textContent = "We couldn't reach the blockchain just now. Try again in a minute.";
+      } else {
+        badge.textContent = "✓"; badge.classList.add("is-plain"); title.textContent = "Wallet verified";
+        detail.textContent = "This wallet doesn't hold $VICINITY yet. Grab some to become a Founding Supporter.";
+      }
+      show("verified"); toast(d.holder ? "Founding Supporter ✓" : "Wallet verified ✓");
     } catch (e) {
       const msg = String(e?.message || "");
       fail(/reject|cancel|denied/i.test(msg) || e?.code === 4001 ? "Signing cancelled in your wallet. Nothing happened."
         : msg === "expired" ? "That message expired. Tap verify again for a fresh one." : "Verification failed. Please try again.");
       preloadMessage();
-    } finally { btn.disabled = false; btn.textContent = "Verify ownership (free)"; }
+    } finally { btn.disabled = false; btn.textContent = "Verify my $VICINITY"; }
   }
 
   async function disconnect() {
@@ -358,6 +373,70 @@
     setTimeout(() => { legacyPhantom(); renderWalletList(); }, 400);
     renderWalletList();
   }
+
+  /* ---------- live token facts, registry, holders ---------- */
+  const fmt = (n) => Number(n).toLocaleString("en-US", { maximumFractionDigits: n < 1 ? 6 : 0 });
+  const shortAddr = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const isAddr = (a) => typeof a === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
+
+  function renderRegistry(list) {
+    const body = $("#registry-body"); if (!body || !Array.isArray(list)) return;
+    body.replaceChildren(...list.map((t) => {
+      const tr = document.createElement("tr");
+      const ca = el("td"); if (isAddr(t.contract)) { const c = el("code", null, t.contract); ca.append(c); } else ca.textContent = t.status === "Launching soon" ? "Launching soon" : "—";
+      const st = el("td"); st.append(el("span", t.contract ? "tag tag--ok" : t.status === "Launching soon" ? "tag tag--warn" : "tag", t.contract ? "Live" : t.status));
+      tr.append(el("td", null, t.network), el("td", null, `${t.name} (${t.symbol.startsWith("e.g.") ? t.symbol : "$" + t.symbol})`), ca, st);
+      return tr;
+    }));
+  }
+
+  async function loadToken() {
+    try {
+      const d = await (await fetch("/api/token", { cache: "no-store" })).json();
+      renderRegistry(d.registry);
+      if (!d.launched || !d.facts) return;
+      const f = d.facts, m = f.mint;
+      $("#ca-text").textContent = m;
+      const copy = $("#ca-copy"); copy.hidden = false;
+      copy.onclick = async () => { try { await navigator.clipboard.writeText(m); toast("Contract address copied"); } catch { toast(m); } };
+      $("#lnk-solscan").href = `https://solscan.io/token/${m}`;
+      $("#lnk-jup").href = `https://jup.ag/tokens/${m}`;
+      $("#lnk-pump").href = `https://pump.fun/coin/${m}`;
+      $("#lnk-dex").href = `https://dexscreener.com/solana/${m}`;
+      $("#ca-links").hidden = false;
+      const live = (key, ok, okText, badText) => { const e = $(`[data-live="${key}"]`); if (!e) return; e.textContent = ok ? okText : badText; e.classList.add(ok ? "is-live" : "is-bad"); };
+      live("mint", f.mintingDisabled, "Verified on-chain", "Warning: minting is ON");
+      live("freeze", f.freezingDisabled, "Verified on-chain", "Warning: freezing is ON");
+      $("#supply-text").textContent = fmt(f.supply);
+      live("supply", true, "Verified on-chain", "");
+    } catch {}
+  }
+
+  async function loadHolders() {
+    const status = $("#holders-status"), table = $("#holders-table"), body = $("#holders-body"), refresh = $("#holders-refresh");
+    if (!status) return;
+    try {
+      const r = await fetch("/api/holders", { cache: "no-store" });
+      const d = await r.json();
+      if (!d.launched) return;
+      refresh.hidden = false;
+      if (!r.ok || d.error) { status.textContent = "The blockchain is busy right now. Try refresh in a minute."; return; }
+      const max = Math.max(...d.holders.map((h) => h.percent), 1);
+      body.replaceChildren(...d.holders.map((h) => {
+        const tr = document.createElement("tr");
+        const w = el("td"); const a = el("a", null, shortAddr(h.owner)); a.href = `https://solscan.io/account/${h.owner}`; a.target = "_blank"; a.rel = "noopener"; a.title = h.owner; w.append(a);
+        if (h.label) w.append(el("span", "tag tag--ok", h.label));
+        const pct = el("td", "num", `${h.percent.toFixed(2)}%`); const bar = el("span", "pct-bar"); const fill = el("span"); fill.style.width = `${(h.percent / max) * 100}%`; bar.append(fill); pct.append(bar);
+        tr.append(el("td", null, String(h.rank)), w, el("td", "num", fmt(h.amount)), pct);
+        return tr;
+      }));
+      table.hidden = false;
+      status.textContent = `Top ${d.holders.length} wallets · updated ${new Date(d.updatedAt).toLocaleTimeString()}`;
+    } catch { status.textContent = "Couldn't load holders. Try refresh."; }
+  }
+  $("#holders-refresh")?.addEventListener("click", loadHolders);
+  loadToken(); loadHolders();
 
   /* ---------- backend status ---------- */
   (async () => {
