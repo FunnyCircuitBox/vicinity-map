@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#070E19">
   <meta name="color-scheme" content="dark">
   <meta property="og:title" content="Vicinity — Represent your city">
-  <meta property="og:description" content="A community map for local memes, check-ins and city leaderboards. Under construction. No token has launched.">
+  <meta property="og:description" content="Every city gets a page. Hold $VICINITY, verify your wallet, and back your city for the Vicinity Launchpad.">
   <meta property="og:type" content="website">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preload" href="/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
@@ -19,13 +19,6 @@
   <a class="skip" href="#main">Skip to content</a>
   <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
 
-  <div class="notice" role="note">
-    <div class="wrap notice__inner">
-      <span class="notice__dot" aria-hidden="true"></span>
-      <p><strong>$VICINITY has not launched.</strong> No presale, no airdrop, no contract address. Anyone selling it now is a scammer. <a href="#check">Check a link</a></p>
-    </div>
-  </div>
-
   <header class="site-header" id="top">
     <div class="wrap site-header__inner">
       <a class="brand" href="#top" aria-label="Vicinity home">
@@ -34,10 +27,10 @@
       </a>
       <nav class="nav" aria-label="Main">
         <a href="#story">How it works</a>
-        <a href="#wallet">Wallet</a>
-        <a href="#check">Verify</a>
         <a href="#token">Token</a>
-        <a href="#roadmap">Roadmap</a>
+        <a href="#holders">Holders</a>
+        <a href="#launchpad">Launchpad</a>
+        <a href="#wallet">Verify</a>
       </nav>
       <button class="btn btn--primary btn--sm" type="button" data-open-wallet>
         <span class="btn__dot" aria-hidden="true"></span><span data-wallet-label>Connect wallet</span>
@@ -56,7 +49,7 @@
 
       <div class="wrap hero__grid">
         <div class="hero__copy">
-          <p class="eyebrow reveal"><span class="pill">Under construction</span> Phase 1 of 3 · Open source</p>
+          <p class="eyebrow reveal"><span class="pill">Building now</span> Every city gets a page</p>
           <h1 class="hero__title" aria-label="Represent your city.">
             <span class="word" aria-hidden="true">Represent</span>
             <span class="word" aria-hidden="true">your</span>
@@ -68,9 +61,9 @@
             <button class="btn btn--glass btn--lg magnetic" type="button" data-open-wallet>Connect wallet</button>
           </div>
           <ul class="hero__facts reveal" aria-label="Key facts">
-            <li><strong>City-level only</strong><span>Never your exact location</span></li>
-            <li><strong>No token yet</strong><span>Product comes first</span></li>
-            <li><strong>Open source</strong><span>Check every line</span></li>
+            <li><strong>No rug pull</strong><span>Minting &amp; freezing off</span></li>
+            <li><strong>Holder-verified</strong><span>Prove it with your wallet</span></li>
+            <li><strong>City coins next</strong><span>The Vicinity Launchpad</span></li>
           </ul>
         </div>
 
@@ -128,8 +121,8 @@
             </li>
             <li class="caption" data-step="4">
               <span class="caption__num">05</span>
-              <h2>Then, and only then, the coin.</h2>
-              <p>$VICINITY launches <strong>after</strong> the map works, with every team wallet published first. Not launched yet.</p>
+              <h2>Hold $VICINITY. Back your city.</h2>
+              <p>$VICINITY powers the whole map. Holders verify with their wallet and become <strong>Founding Supporters</strong> of the Vicinity Launchpad, where every city gets its own coin.</p>
             </li>
           </ol>
 
@@ -196,7 +189,7 @@
                   </g>
                   <g transform="translate(0 150)">
                     <rect x="-86" y="-18" width="172" height="36" rx="18" class="coin__tag"/>
-                    <text y="6" text-anchor="middle" class="coin__tagtext">NOT LAUNCHED</text>
+                    <text y="6" text-anchor="middle" class="coin__tagtext">LAUNCHING SOON</text>
                   </g>
                 </g>
               </g>
@@ -246,19 +239,69 @@
       </div>
     </section>
 
-    <!-- ============ WALLET ============ -->
+    <!-- ============ TOKEN / NO RUG ============ -->
+    <section id="token" class="section section--panel">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">The token</p>
+          <h2>$VICINITY. No rug pull. Here's the proof.</h2>
+          <p class="muted">Don't trust us, check the chain. Every fact below is read live from the Solana blockchain the moment the token is live.</p>
+        </div>
+        <div class="contract card-glass reveal" id="contract">
+          <div class="contract__label">Official contract address (Solana)</div>
+          <div class="contract__row">
+            <code id="ca-text">Launching soon</code>
+            <button class="btn btn--glass btn--sm" type="button" id="ca-copy" hidden>Copy</button>
+          </div>
+          <div class="contract__links" id="ca-links" hidden>
+            <a class="chip-link" id="lnk-solscan" href="#" rel="noopener" target="_blank">Solscan ↗</a>
+            <a class="chip-link" id="lnk-jup" href="#" rel="noopener" target="_blank">Jupiter ↗</a>
+            <a class="chip-link" id="lnk-pump" href="#" rel="noopener" target="_blank">pump.fun ↗</a>
+            <a class="chip-link" id="lnk-dex" href="#" rel="noopener" target="_blank">DEX Screener ↗</a>
+          </div>
+        </div>
+        <div class="proof-grid">
+          <div class="proof card-glass reveal" data-proof="mint"><span class="proof__icon">✓</span><h3>Minting disabled</h3><p>No one, including us, can ever create more $VICINITY.</p><span class="proof__live" data-live="mint">Checked live at launch</span></div>
+          <div class="proof card-glass reveal" data-proof="freeze"><span class="proof__icon">✓</span><h3>No freeze button</h3><p>No one can lock your tokens or stop you from selling.</p><span class="proof__live" data-live="freeze">Checked live at launch</span></div>
+          <div class="proof card-glass reveal"><span class="proof__icon">✓</span><h3>Liquidity can't be pulled</h3><p>Fair launch on pump.fun. When it graduates, the liquidity is burned forever.</p><span class="proof__live">pump.fun standard</span></div>
+          <div class="proof card-glass reveal"><span class="proof__icon">✓</span><h3>Fixed supply</h3><p><span id="supply-text">1,000,000,000</span> $VICINITY. That's it, forever.</p><span class="proof__live" data-live="supply">Checked live at launch</span></div>
+          <div class="proof card-glass reveal"><span class="proof__icon">✓</span><h3>Team wallets public</h3><p>Every wallet we control is listed on this page. No hidden bags.</p><span class="proof__live" id="team-count">Listed at launch</span></div>
+          <div class="proof card-glass reveal"><span class="proof__icon">🐋</span><h3>Whales welcome</h3><p>Anyone can buy, anyone can sell. The coin stays, and the project keeps building.</p><span class="proof__live">Open market</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOLDERS ============ -->
+    <section id="holders" class="section">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Holders</p>
+          <h2>Who holds $VICINITY, live</h2>
+          <p class="muted">The biggest wallets, straight from the blockchain. Pools and team wallets are labeled so you know exactly who is who.</p>
+        </div>
+        <div class="holders card-glass reveal" aria-live="polite">
+          <div class="holders__head"><span id="holders-status">The live holder list opens the moment $VICINITY launches.</span><button class="link-btn" type="button" id="holders-refresh" hidden>Refresh</button></div>
+          <table class="holders__table" id="holders-table" hidden>
+            <thead><tr><th>#</th><th>Wallet</th><th class="num">Amount</th><th class="num">% of supply</th></tr></thead>
+            <tbody id="holders-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WALLET / VERIFY HOLDER ============ -->
     <section class="section section--glow" id="wallet">
       <div class="wrap wallet-grid">
         <div class="reveal">
-          <p class="kicker">Wallet</p>
-          <h2>Connect and prove it's you. Safely.</h2>
-          <p class="muted">Connect a Solana wallet and sign one plain-text message. That proves you own the address. It's <strong>free</strong>, it's <strong>not a transaction</strong>, and it <strong>can't move funds</strong>.</p>
-          <ul class="safety">
-            <li>We will <strong>never</strong> ask for your secret recovery phrase.</li>
-            <li>We will <strong>never</strong> ask you to approve a transaction on this site today.</li>
-            <li>Before signing, check the message starts with <code id="host-hint">this site's address</code>.</li>
-            <li>We don't store your address. Verification lasts until you close the tab.</li>
-          </ul>
+          <p class="kicker">Verify</p>
+          <h2>Prove you're a holder.</h2>
+          <p class="muted">Connect your Solana wallet and sign one free message. We check the blockchain for $VICINITY in that wallet and show your status instantly.</p>
+          <ol class="howto">
+            <li><strong>Connect</strong> Phantom, Solflare, Backpack or any Solana wallet.</li>
+            <li><strong>Sign</strong> one message. It's free and it isn't a transaction.</li>
+            <li><strong>Get your badge.</strong> Holders become Founding Supporters.</li>
+          </ol>
+          <p class="tiny muted">We don't save your wallet address. Vicinity will never ask for your recovery phrase.</p>
         </div>
 
         <div class="wallet card-glass reveal" id="wallet-panel" aria-live="polite">
@@ -272,23 +315,23 @@
                 <a class="btn btn--glass btn--sm" id="open-phantom" href="https://phantom.com" rel="noopener">Open in Phantom</a>
                 <a class="btn btn--glass btn--sm" id="open-solflare" href="https://solflare.com" rel="noopener">Open in Solflare</a>
               </div>
-              <p class="tiny muted">On a phone, these buttons open this page inside the wallet app. On a computer, they take you to the official download pages.</p>
+              <p class="tiny muted">On a phone, these open this page inside the wallet app.</p>
             </div>
           </div>
 
           <div class="wallet__state" data-state="connected" hidden>
             <div class="addr"><span class="addr__dot" aria-hidden="true"></span><span id="addr-short">—</span><button class="link-btn" type="button" id="copy-addr">Copy</button></div>
-            <p class="muted small">Connected with <span id="wallet-name">wallet</span>. Not verified yet.</p>
-            <button class="btn btn--primary btn--block" type="button" id="verify-btn">Verify ownership (free)</button>
-            <details class="msg-preview"><summary>See the exact message you'll sign</summary><pre id="msg-preview">Loading…</pre></details>
+            <p class="muted small">Connected with <span id="wallet-name">wallet</span>.</p>
+            <button class="btn btn--primary btn--block" type="button" id="verify-btn">Verify my $VICINITY</button>
+            <details class="msg-preview"><summary>See the message you'll sign</summary><pre id="msg-preview">Loading…</pre></details>
             <button class="link-btn" type="button" data-disconnect>Disconnect</button>
           </div>
 
           <div class="wallet__state" data-state="verified" hidden>
-            <div class="verified-badge" aria-hidden="true">✓</div>
-            <h3>Wallet verified</h3>
+            <div class="verified-badge" id="badge-icon" aria-hidden="true">✓</div>
+            <h3 id="verify-title">Wallet verified</h3>
             <p class="addr addr--center"><span id="addr-verified">—</span></p>
-            <p class="muted small">The signature was checked by our server just now. Your address was not stored.</p>
+            <p class="small" id="verify-detail"></p>
             <button class="link-btn" type="button" data-disconnect>Disconnect</button>
           </div>
 
@@ -297,92 +340,63 @@
       </div>
     </section>
 
-    <!-- ============ LINK CHECKER ============ -->
-    <section class="section" id="check">
+    <!-- ============ LAUNCHPAD / FOUNDING SUPPORTERS ============ -->
+    <section class="section section--panel" id="launchpad">
       <div class="wrap">
         <div class="section-head reveal">
-          <p class="kicker">Verify</p>
-          <h2>Is this link really Vicinity?</h2>
-          <p class="muted">Scammers copy new projects fast. Paste any link, token address or @handle and we'll check it against our official list.</p>
+          <p class="kicker">Vicinity Launchpad · coming next</p>
+          <h2>Every city gets its own coin.</h2>
+          <p class="muted">One coin per city, launched once, owned by its community. People holding $VICINITY now are the <strong>Founding Supporters</strong> who get there first.</p>
         </div>
-        <form class="checker card-glass reveal" id="checker" novalidate>
-          <label for="check-input" class="sr-only">Link, address or handle to check</label>
-          <input id="check-input" name="q" type="text" autocomplete="off" spellcheck="false" maxlength="300" placeholder="e.g. vicinity-airdrop.xyz, @vicinity, or a token address">
-          <button class="btn btn--primary" type="submit">Check</button>
-        </form>
-        <div class="check-result" id="check-result" aria-live="polite" hidden></div>
-        <div class="official reveal">
-          <p class="official__title">Official list right now</p>
-          <ul>
-            <li><span class="tag tag--ok">Website</span> vicinity-map.noyonsakibul.workers.dev</li>
-            <li><span class="tag tag--ok">Code</span> <a href="https://github.com/FunnyCircuitBox/vicinity-map" rel="noopener">github.com/FunnyCircuitBox/vicinity-map</a></li>
-            <li><span class="tag tag--no">Socials</span> None yet. Any "Vicinity" account is not us.</li>
-            <li><span class="tag tag--no">Token</span> Not launched. No official contract address exists.</li>
-          </ul>
+        <div class="grid-3">
+          <div class="card-glass reveal perk"><span class="perk__icon">🚀</span><h3>Early access</h3><p class="muted">Founding Supporters get into the Launchpad before everyone else.</p></div>
+          <div class="card-glass reveal perk"><span class="perk__icon">📍</span><h3>First claim on your city</h3><p class="muted">First chance to launch your own city's coin before the name is taken.</p></div>
+          <div class="card-glass reveal perk"><span class="perk__icon">🏅</span><h3>Founding badge</h3><p class="muted">A permanent Founding Supporter badge on your city page.</p></div>
         </div>
+        <p class="note reveal">No sign-up needed. Founding Supporters are picked by an on-chain snapshot of $VICINITY holders. The snapshot time is announced ahead of time on this site.</p>
       </div>
     </section>
 
-    <!-- ============ TOKEN ============ -->
-    <section id="token" class="section section--panel">
+    <!-- ============ OFFICIAL TOKENS + LINK CHECKER ============ -->
+    <section class="section" id="check">
       <div class="wrap">
         <div class="section-head reveal">
-          <p class="kicker">Token</p>
-          <h2>$VICINITY, when it launches</h2>
+          <p class="kicker">Official tokens</p>
+          <h2>Every real Vicinity token, on every network</h2>
+          <p class="muted">If a token isn't on this list, it isn't Vicinity. Paste any link, token address or @handle below to check it.</p>
         </div>
-        <div class="token-grid">
-          <dl class="specs card-glass reveal">
-            <div><dt>Status</dt><dd><span class="tag tag--warn">Not launched</span></dd></div>
-            <div><dt>Chain</dt><dd>Solana</dd></div>
-            <div><dt>Launch method</dt><dd>Fair launch on pump.fun</dd></div>
-            <div><dt>Presale</dt><dd>None, ever</dd></div>
-            <div><dt>Contract address</dt><dd>Not yet. It'll be published here <em>and</em> on GitHub.</dd></div>
-            <div><dt>Team wallets</dt><dd>Listed publicly before launch</dd></div>
-          </dl>
-          <div class="card-glass reveal">
-            <h3>What the token is, and isn't</h3>
-            <ul class="checklist">
-              <li class="yes">A community meme coin for people who enjoy the map</li>
-              <li class="yes">Small, public rewards for contributions like meme of the week</li>
-              <li class="no">Not required to use Vicinity</li>
-              <li class="no">Not an investment, and no promise of profit</li>
-              <li class="no">No holder payouts or "passive income"</li>
-            </ul>
-          </div>
+        <div class="registry card-glass reveal">
+          <table class="registry__table">
+            <thead><tr><th>Network</th><th>Token</th><th>Contract</th><th>Status</th></tr></thead>
+            <tbody id="registry-body">
+              <tr><td>Solana</td><td>Vicinity ($VICINITY)</td><td>Launching soon</td><td><span class="tag tag--warn">Launching soon</span></td></tr>
+              <tr><td>Solana</td><td>City coins (e.g. $UTICA)</td><td>—</td><td><span class="tag">Phase 3</span></td></tr>
+            </tbody>
+          </table>
         </div>
+        <form class="checker card-glass reveal" id="checker" novalidate>
+          <label for="check-input" class="sr-only">Link, address or handle to check</label>
+          <input id="check-input" name="q" type="text" autocomplete="off" spellcheck="false" maxlength="300" placeholder="Paste a link, token address or @handle">
+          <button class="btn btn--primary" type="submit">Check</button>
+        </form>
+        <div class="check-result" id="check-result" aria-live="polite" hidden></div>
       </div>
     </section>
 
     <!-- ============ ROADMAP ============ -->
-    <section id="roadmap" class="section">
+    <section id="roadmap" class="section section--panel">
       <div class="wrap">
         <div class="section-head reveal">
           <p class="kicker">Roadmap</p>
-          <h2>Built in public, one milestone at a time</h2>
+          <h2>Where Vicinity is going</h2>
         </div>
         <ol class="timeline" id="timeline">
-          <li class="timeline__item is-done reveal"><span class="timeline__status">Done</span><h3>Milestone 1: Foundation</h3><p>Website, open-source code, secure automatic deployment, wallet verification and link checker.</p></li>
-          <li class="timeline__item is-next reveal"><span class="timeline__status">Next</span><h3>Milestone 2: The map</h3><p>Interactive map and city pages. Test cities clearly labeled "demo."</p></li>
-          <li class="timeline__item reveal"><span class="timeline__status">Planned</span><h3>Milestones 3–4: Check-ins, memes & votes</h3><p>Posting, moderation, weekly votes and the real city leaderboard.</p></li>
-          <li class="timeline__item reveal"><span class="timeline__status">Planned</span><h3>Milestone 5: Private beta</h3><p>Real people in 2–3 cities. No fake accounts, no bots.</p></li>
-          <li class="timeline__item reveal"><span class="timeline__status">Planned</span><h3>Milestone 6: $VICINITY launch</h3><p>Fair launch on pump.fun (Solana), all team wallets published beforehand.</p></li>
+          <li class="timeline__item is-done reveal"><span class="timeline__status">Done</span><h3>Foundation</h3><p>Website, wallet verification, live holder tools and the official token checker.</p></li>
+          <li class="timeline__item is-next reveal"><span class="timeline__status">Next</span><h3>$VICINITY launch</h3><p>Fair launch on pump.fun. Contract address published here first.</p></li>
+          <li class="timeline__item reveal"><span class="timeline__status">Then</span><h3>The map</h3><p>City pages, check-ins, local memes and weekly votes.</p></li>
+          <li class="timeline__item reveal"><span class="timeline__status">Then</span><h3>Vicinity Passport</h3><p>Collect stamps for visiting local places.</p></li>
+          <li class="timeline__item reveal"><span class="timeline__status">Big one</span><h3>Vicinity Launchpad</h3><p>Every city launches its own coin. Founding Supporters go first.</p></li>
         </ol>
-        <p class="note reveal">Later ideas, <strong>Vicinity Passport</strong> (stamps for visiting local places) and a <strong>Vicinity Launchpad</strong>, are not promises. The launchpad only happens after an independent legal review.</p>
-      </div>
-    </section>
-
-    <!-- ============ TRANSPARENCY ============ -->
-    <section class="section section--panel">
-      <div class="wrap">
-        <div class="section-head reveal">
-          <p class="kicker">Transparency</p>
-          <h2>Check everything yourself</h2>
-        </div>
-        <div class="grid-3">
-          <div class="card-glass reveal"><h3>Wallets we control</h3><p class="big">0</p><p class="muted">None yet. Each will be listed here with a link to view it on the blockchain.</p></div>
-          <div class="card-glass reveal"><h3>Money raised</h3><p class="big">$0</p><p class="muted">No presale, no donations, no investors. Built on free tools so far.</p></div>
-          <div class="card-glass reveal"><h3>Our rules</h3><ul class="plain"><li>City-level location only</li><li>No fake users, counters or paid hype</li><li>Paid promotions always disclosed</li><li>Open-source code</li></ul></div>
-        </div>
       </div>
     </section>
 
@@ -390,23 +404,13 @@
     <section id="faq" class="section">
       <div class="wrap"><div class="faq">
         <div class="section-head reveal"><p class="kicker">FAQ</p><h2>Questions</h2></div>
-        <details class="reveal"><summary>Can I buy $VICINITY now?</summary><p>No. It hasn't launched. No presale, no whitelist, no airdrop. If someone offers you one, it's a scam. Use the checker above.</p></details>
-        <details class="reveal"><summary>Is connecting my wallet safe?</summary><p>Connecting only shares your public address. Verifying asks you to sign a plain message, which can't move funds. Never approve a transaction or share your recovery phrase on any site you don't fully trust.</p></details>
-        <details class="reveal"><summary>Do I need crypto to use the map?</summary><p>No. The map will be free. A wallet is only needed if you want community rewards later.</p></details>
-        <details class="reveal"><summary>What location data do you keep?</summary><p>Only the name of your city. Your exact position is used once to find it, then discarded.</p></details>
-        <details class="reveal"><summary>Who is behind this?</summary><p>A small independent builder. All code is public on GitHub so you can check it yourself.</p></details>
-        <details class="reveal"><summary>Will the price go up?</summary><p>Nobody honest can tell you that. Most meme coins lose nearly all their value. Join for the community and the fun, never with money you can't afford to lose.</p></details>
+        <details class="reveal"><summary>What is Vicinity?</summary><p>A community map where every city gets its own page for local memes, check-ins and weekly votes, powered by the $VICINITY token. Next comes the Vicinity Launchpad, where every city can launch its own coin.</p></details>
+        <details class="reveal"><summary>How do I become a Founding Supporter?</summary><p>Hold $VICINITY. That's it. Supporters are picked by an on-chain snapshot, so there's nothing to sign up for. You can check your status anytime with "Verify" above.</p></details>
+        <details class="reveal"><summary>Is this a rug pull?</summary><p>No. Minting and freezing are switched off, liquidity is burned when it graduates on pump.fun, and every team wallet is listed here. You can check all of it live on the blockchain.</p></details>
+        <details class="reveal"><summary>Which contract address is real?</summary><p>Only the one shown on this page and in the official token list. Paste any address into the checker to confirm.</p></details>
+        <details class="reveal"><summary>Is verifying my wallet safe?</summary><p>Yes. You only sign a plain message, which can't move funds, and we don't save your address.</p></details>
+        <details class="reveal"><summary>What location data do you keep?</summary><p>Only the name of your city, never your exact position.</p></details>
       </div></div>
-    </section>
-
-    <!-- ============ RISK ============ -->
-    <section class="section section--tight">
-      <div class="wrap">
-        <div class="risk reveal">
-          <h2>Risk disclosure</h2>
-          <p>Meme coins are highly speculative, and most lose all or nearly all their value. Nothing on this site is financial, legal or tax advice, or a promise of profit. Crypto transactions can't be reversed. Always double-check addresses, and never share your wallet's secret phrase with anyone.</p>
-        </div>
-      </div>
     </section>
   </main>
 
@@ -415,7 +419,7 @@
       <div class="brand"><img src="/logo.svg" alt="" width="28" height="28"><span>Vicinity</span></div>
       <p class="muted">Represent your city.</p>
       <p class="muted">System status: <span id="status">checking…</span></p>
-      <p><a href="https://github.com/FunnyCircuitBox/vicinity-map" rel="noopener">Source code (MIT)</a></p>
+      <p class="muted">vicinitycity.net</p>
     </div>
   </footer>
 
