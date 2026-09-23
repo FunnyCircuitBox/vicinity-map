@@ -10,13 +10,18 @@
  *                               (after launch) check how much $VICINITY it holds
  *   GET  /api/token           → live token facts (supply, minting/freezing disabled)
  *   GET  /api/holders         → live top holders from the blockchain
+ *   GET  /api/claims          → every claimed city + community-added cities
+ *   POST /api/claim           → claim a city (signed message + live location + 1M hold)
  *
  * Everything else is served from /public by Cloudflare's static asset handler.
- * No database and no stored wallet addresses. Optional secret: SOLANA_RPC_URL.
+ * Database (D1, binding DB) holds city claims only. Visitor locations are never saved.
+ * Optional secret: SOLANA_RPC_URL.
  */
 import { OFFICIAL, VICINITY_MINT, checkOfficial } from "./official.js";
 import { getHolding, getTokenFacts, getTopHolders } from "./chain.js";
-import { base58Encode, buildMessage, isSolanaAddress, parseMessage, verifySignature } from "./solana.js";
+import { base58Encode, buildMessage, CITY_NAME_RE, isSolanaAddress, parseMessage, statementFor, verifySignature } from "./solana.js";
+import { BIG_CITY_RADIUS_KM, CLAIM_MIN_HOLD, CLAIM_RADIUS_KM, MAX_LOCATION_ACCURACY_M, cleanLocation, countryCities, distanceKm, normName, radiusFor } from "./cities.js";
+import { d1Store } from "./store.js";
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy":
@@ -60,37 +65,48 @@ async function cached(key, seconds, produce) {
   return res;
 }
 
-export async function handleVerify(request, env = {}, now = Date.now(), fetchImpl = fetch) {
+/**
+ * Read a signed-message request and check it fully: format, this site, not expired,
+ * and a real signature from the address. Returns { parsed, body } or { error: Response }.
+ */
+async function readSigned(request, now, actions, errKey) {
+  const bad = (error, status = 400) => ({ error: json({ [errKey]: false, error }, status) });
   const len = Number(request.headers.get("content-length") || 0);
-  if (len > MAX_BODY) return json({ verified: false, error: "too_large" }, 413);
+  if (len > MAX_BODY) return bad("too_large", 413);
   let body;
   try {
     const text = await request.text();
-    if (text.length > MAX_BODY) return json({ verified: false, error: "too_large" }, 413);
+    if (text.length > MAX_BODY) return bad("too_large", 413);
     body = JSON.parse(text);
   } catch {
-    return json({ verified: false, error: "bad_json" }, 400);
+    return bad("bad_json");
   }
   const { address, message, signature } = body || {};
-  if (!isSolanaAddress(address)) return json({ verified: false, error: "bad_address" }, 400);
+  if (!isSolanaAddress(address)) return bad("bad_address");
 
   const parsed = parseMessage(message);
-  if (!parsed) return json({ verified: false, error: "bad_message" }, 400);
+  if (!parsed || !actions.includes(parsed.action)) return bad("bad_message");
 
   const host = new URL(request.url).host;
-  if (parsed.host !== host) return json({ verified: false, error: "wrong_site" }, 400);
-  if (parsed.address !== address) return json({ verified: false, error: "address_mismatch" }, 400);
+  if (parsed.host !== host) return bad("wrong_site");
+  if (parsed.address !== address) return bad("address_mismatch");
 
   const issued = Date.parse(parsed.issuedAt);
-  if (!Number.isFinite(issued) || issued > now + 60_000 || now - issued > MAX_AGE_MS)
-    return json({ verified: false, error: "expired" }, 400);
+  if (!Number.isFinite(issued) || issued > now + 60_000 || now - issued > MAX_AGE_MS) return bad("expired");
 
   let sig;
-  try { sig = base64ToBytes(signature); } catch { return json({ verified: false, error: "bad_signature" }, 400); }
+  try { sig = base64ToBytes(signature); } catch { return bad("bad_signature"); }
 
   let ok = false;
   try { ok = await verifySignature(address, message, sig); } catch { ok = false; }
-  if (!ok) return json({ verified: false, error: "signature_mismatch" }, 401);
+  if (!ok) return bad("signature_mismatch", 401);
+  return { parsed, body };
+}
+
+export async function handleVerify(request, env = {}, now = Date.now(), fetchImpl = fetch) {
+  const r = await readSigned(request, now, ["verify"], "verified");
+  if (r.error) return r.error;
+  const address = r.parsed.address;
 
   console.log("wallet verified", address.slice(0, 4) + "…" + address.slice(-4));
   const out = { verified: true, address, verifiedAt: new Date(now).toISOString(), launched: false };
@@ -102,12 +118,95 @@ export async function handleVerify(request, env = {}, now = Date.now(), fetchImp
       out.holder = amount > 0;
       out.amount = amount;
       out.tier = amount > 0 ? "Founding Supporter" : null;
+      out.canClaim = amount >= CLAIM_MIN_HOLD;
     } catch (e) {
       console.error("holding lookup failed", String(e));
       out.holderCheck = "unavailable";
     }
   }
+  if (env.DB || env.store) {
+    try { out.city = await storeFor(env).claimByWallet(address); } catch { /* optional */ }
+  }
   return json(out);
+}
+
+export const claimRules = (env) => ({ minHold: CLAIM_MIN_HOLD, radiusKm: CLAIM_RADIUS_KM, bigCityRadiusKm: BIG_CITY_RADIUS_KM, open: Boolean(activeMint(env)) });
+
+export const storeFor = (env) => env.store || d1Store(env.DB);
+
+/**
+ * Claim a city (or add a missing one and claim it).
+ * Body: { address, message, signature, location: { lat, lon, accuracy } }
+ * The location is used for the distance check only and is never saved.
+ */
+export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl = fetch) {
+  const r = await readSigned(request, now, ["claim", "add"], "claimed");
+  if (r.error) return r.error;
+  const { parsed, body } = r;
+  const wallet = parsed.address;
+  const no = (error, status = 400, extra = {}) => json({ claimed: false, error, ...extra }, status);
+
+  if (!env.DB && !env.store) return no("claims_unavailable", 503);
+  const store = storeFor(env);
+
+  const mint = activeMint(env);
+  if (!mint) return no("not_launched", 409);
+
+  const loc = cleanLocation(body.location);
+  if (!loc) return no("location_required");
+  if (loc.accuracy > MAX_LOCATION_ACCURACY_M) return no("location_too_rough");
+
+  let listed;
+  try { listed = await countryCities(env, parsed.country); } catch { return no("cities_unavailable", 503); }
+  if (!listed) return no("unknown_country");
+
+  // Which city, and is the visitor inside it?
+  let city;
+  if (parsed.action === "claim") {
+    const id = parsed.cityId;
+    if (id.startsWith("c")) {
+      const a = await store.addedCity(Number(id.slice(1)));
+      city = a && a.country === parsed.country && { id, name: a.name, country: a.country, lat: a.lat, lon: a.lon, pop: 0 };
+    } else city = listed.find((c) => c.id === id);
+    if (!city) return no("unknown_city", 404);
+  } else {
+    const norm = normName(parsed.name);
+    const same = listed.find((c) => normName(c.name) === norm && distanceKm(loc.lat, loc.lon, c.lat, c.lon) <= 60);
+    const added = (await store.addedByName(parsed.country, norm)).find((c) => distanceKm(loc.lat, loc.lon, c.lat, c.lon) <= 60);
+    const dup = same || (added && { id: "c" + added.id, name: added.name });
+    if (dup) return no("already_listed", 409, { cityId: String(dup.id), cityName: dup.name });
+    // New city center = the visitor's spot rounded to about 10 km, so no home location is revealed.
+    city = { id: null, name: parsed.name, country: parsed.country, lat: Math.round(loc.lat * 10) / 10, lon: Math.round(loc.lon * 10) / 10, pop: 0 };
+  }
+
+  const dist = distanceKm(loc.lat, loc.lon, city.lat, city.lon);
+  if (city.id && dist > radiusFor(city)) return no("not_in_city", 403, { km: Math.round(dist), radiusKm: radiusFor(city) });
+
+  // One wallet, one city.
+  const mine = await store.claimByWallet(wallet);
+  if (mine) return no("wallet_has_city", 409, { city: mine });
+  if (city.id) {
+    const taken = await store.claimByCity(city.id);
+    if (taken) return no("city_taken", 409, { by: taken.wallet });
+  }
+
+  // Must hold enough $VICINITY right now (checked live on the blockchain).
+  let amount;
+  try { amount = await getHolding(env, wallet, mint, fetchImpl); }
+  catch (e) { console.error("holding lookup failed", String(e)); return no("chain_unavailable", 503); }
+  if (amount < CLAIM_MIN_HOLD) return no("not_enough_tokens", 403, { amount, required: CLAIM_MIN_HOLD });
+
+  const at = new Date(now).toISOString();
+  try {
+    if (city.id) await store.insertClaim({ cityId: city.id, wallet, cityName: city.name, country: city.country, at });
+    else city.id = await store.insertAddedCityAndClaim({ name: city.name, norm: normName(city.name), country: city.country, lat: city.lat, lon: city.lon, wallet, at });
+  } catch (e) {
+    if (/UNIQUE/i.test(String(e))) return no("city_taken", 409);
+    console.error("claim insert failed", String(e));
+    return no("claims_unavailable", 503);
+  }
+  console.log("city claimed", city.id, wallet.slice(0, 4) + "…" + wallet.slice(-4));
+  return json({ claimed: true, cityId: city.id, cityName: city.name, country: city.country, wallet, claimedAt: at, amount });
 }
 
 export async function handleApi(request, env = {}, fetchImpl = fetch) {
@@ -153,11 +252,34 @@ export async function handleApi(request, env = {}, fetchImpl = fetch) {
       // Helper so the browser builds exactly the same text the server expects.
       const blocked = only("GET");
       if (blocked) return blocked;
-      const address = url.searchParams.get("address");
+      const q = url.searchParams;
+      const address = q.get("address");
       if (!isSolanaAddress(address)) return json({ error: "bad_address" }, 400);
+      const action = q.get("action") || "verify";
+      let statement;
+      if (action === "verify") statement = statementFor("verify");
+      else if (action === "claim" && /^([0-9]{1,10}|c[0-9]{1,9})$/.test(q.get("city") || "") && /^[A-Z]{2}$/.test(q.get("country") || ""))
+        statement = statementFor("claim", { cityId: q.get("city"), country: q.get("country") });
+      else if (action === "add" && CITY_NAME_RE.test((q.get("name") || "").trim()) && /^[A-Z]{2}$/.test(q.get("country") || ""))
+        statement = statementFor("add", { name: q.get("name").trim().replace(/\s+/g, " "), country: q.get("country") });
+      else return json({ error: "bad_request" }, 400);
       const nonce = base58Encode(crypto.getRandomValues(new Uint8Array(16)));
       const issuedAt = new Date().toISOString();
-      return json({ message: buildMessage({ host: url.host, address, nonce, issuedAt }) });
+      return json({ message: buildMessage({ host: url.host, address, nonce, issuedAt, statement }) });
+    }
+    case "/api/claim":
+      return only("POST") || handleClaim(request, env, Date.now(), fetchImpl);
+    case "/api/claims": {
+      const blocked = only("GET");
+      if (blocked) return blocked;
+      if (!env.DB && !env.store) return json({ open: false, claims: [], added: [], rules: claimRules(env) });
+      try {
+        const all = await storeFor(env).listAll();
+        return json({ open: Boolean(activeMint(env)), ...all, rules: claimRules(env) });
+      } catch (e) {
+        console.error("claims list failed", String(e));
+        return json({ error: "claims_unavailable" }, 503);
+      }
     }
     default:
       return json({ error: "not_found" }, 404);

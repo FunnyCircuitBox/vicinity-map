@@ -55,13 +55,40 @@ export function isSolanaAddress(str) {
 export const MESSAGE_STATEMENT =
   "Verify wallet ownership for Vicinity. This is free, is not a transaction, and cannot move funds.";
 
+const FREE = "Free, not a transaction, cannot move funds.";
+
+/** A city name we accept: letters (any language), spaces and . ' - only. */
+export const CITY_NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} .'’-]{0,58}[\p{L}\p{M}.]$/u;
+
+/**
+ * The one line that says what the wallet is agreeing to.
+ *   verify → prove you own the wallet
+ *   claim  → claim a listed city (by id)
+ *   add    → add a missing city and claim it
+ */
+export function statementFor(action = "verify", { cityId, name, country } = {}) {
+  if (action === "claim") return `Claim city #${cityId} (${country}) for this wallet on Vicinity. ${FREE}`;
+  if (action === "add") return `Add the city "${name}" (${country}) and claim it for this wallet on Vicinity. ${FREE}`;
+  return MESSAGE_STATEMENT;
+}
+
+function parseStatement(line) {
+  if (line === MESSAGE_STATEMENT) return { action: "verify" };
+  let m = line.match(/^Claim city #([0-9]{1,10}|c[0-9]{1,9}) \(([A-Z]{2})\) for this wallet on Vicinity\. /);
+  if (m && line === statementFor("claim", { cityId: m[1], country: m[2] })) return { action: "claim", cityId: m[1], country: m[2] };
+  m = line.match(/^Add the city "(.+)" \(([A-Z]{2})\) and claim it for this wallet on Vicinity\. /);
+  if (m && CITY_NAME_RE.test(m[1]) && line === statementFor("add", { name: m[1], country: m[2] }))
+    return { action: "add", name: m[1], country: m[2] };
+  return null;
+}
+
 /** Build the exact message the wallet signs. The browser and server must agree on this format. */
-export function buildMessage({ host, address, nonce, issuedAt }) {
+export function buildMessage({ host, address, nonce, issuedAt, statement = MESSAGE_STATEMENT }) {
   return [
     `${host} wants you to sign in with your Solana account:`,
     address,
     "",
-    MESSAGE_STATEMENT,
+    statement,
     "",
     `URI: https://${host}`,
     "Version: 1",
@@ -80,7 +107,9 @@ export function parseMessage(message) {
   const nonce = lines[8].match(/^Nonce: ([A-Za-z0-9]{16,64})$/);
   const issued = lines[9].match(/^Issued At: (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/);
   if (!m0 || !nonce || !issued) return null;
-  const parsed = { host: m0[1], address: lines[1], nonce: nonce[1], issuedAt: issued[1] };
+  const st = parseStatement(lines[3]);
+  if (!st) return null;
+  const parsed = { host: m0[1], address: lines[1], nonce: nonce[1], issuedAt: issued[1], statement: lines[3], ...st };
   return buildMessage(parsed) === message ? parsed : null;
 }
 
