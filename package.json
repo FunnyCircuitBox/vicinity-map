@@ -1,0 +1,18 @@
+{
+  "name": "vicinity-map",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Represent your city. A community map for local memes, check-ins and city leaderboards.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.137.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

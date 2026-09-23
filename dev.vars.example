@@ -1,0 +1,2 @@
+# Copy this file to .dev.vars for local secrets. Never commit .dev.vars.
+# (No secrets are needed yet at Milestone 1.)
