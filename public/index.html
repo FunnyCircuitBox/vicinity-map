@@ -2,59 +2,424 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vicinity Map — Represent your city</title>
-  <meta name="description" content="A community map for local memes, check-ins and city leaderboards. Under construction.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vicinity — Represent your city</title>
+  <meta name="description" content="Vicinity is a community map where every city gets its own page. Check in, post local memes, vote weekly. Cities rank by community activity, not coin holdings.">
+  <meta name="theme-color" content="#070E19">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:title" content="Vicinity — Represent your city">
+  <meta property="og:description" content="A community map for local memes, check-ins and city leaderboards. Under construction. No token has launched.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header class="wrap">
-    <div class="logo" aria-label="Vicinity">◎ Vicinity</div>
-    <span class="badge">Under construction</span>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
+
+  <div class="notice" role="note">
+    <div class="wrap notice__inner">
+      <span class="notice__dot" aria-hidden="true"></span>
+      <p><strong>$VICINITY has not launched.</strong> No presale, no airdrop, no contract address. Anyone selling it now is a scammer. <a href="#check">Check a link</a></p>
+    </div>
+  </div>
+
+  <header class="site-header" id="top">
+    <div class="wrap site-header__inner">
+      <a class="brand" href="#top" aria-label="Vicinity home">
+        <img src="/logo.svg" alt="" width="32" height="32">
+        <span>Vicinity</span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="#story">How it works</a>
+        <a href="#wallet">Wallet</a>
+        <a href="#check">Verify</a>
+        <a href="#token">Token</a>
+        <a href="#roadmap">Roadmap</a>
+      </nav>
+      <button class="btn btn--primary btn--sm" type="button" data-open-wallet>
+        <span class="btn__dot" aria-hidden="true"></span><span data-wallet-label>Connect wallet</span>
+      </button>
+    </div>
   </header>
 
-  <main class="wrap">
-    <section class="hero">
-      <h1>Represent your city.</h1>
-      <p class="lead">Vicinity Map is a community map where every city gets its own page. Check in, post local memes and vote for the best one each week. Cities rank by how active their people are, not by who holds the most coins.</p>
+  <main id="main">
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="hero">
+      <div class="hero__bg" aria-hidden="true">
+        <div class="orb orb--a"></div><div class="orb orb--b"></div><div class="orb orb--c"></div>
+        <div class="grid-floor"></div>
+        <div class="spotlight"></div>
+      </div>
+
+      <div class="wrap hero__grid">
+        <div class="hero__copy">
+          <p class="eyebrow reveal"><span class="pill">Under construction</span> Phase 1 of 3 · Open source</p>
+          <h1 class="hero__title" aria-label="Represent your city.">
+            <span class="word" aria-hidden="true">Represent</span>
+            <span class="word" aria-hidden="true">your</span>
+            <span class="word word--accent" aria-hidden="true">city.</span>
+          </h1>
+          <p class="lead reveal">A community map where every city gets its own page. Check in, post local memes, vote every week. Cities rank by how <em>active</em> their people are, not by who holds the most coins.</p>
+          <div class="hero__cta reveal">
+            <a class="btn btn--primary btn--lg magnetic" href="#story">Take the tour <span aria-hidden="true">↓</span></a>
+            <button class="btn btn--glass btn--lg magnetic" type="button" data-open-wallet>Connect wallet</button>
+          </div>
+          <ul class="hero__facts reveal" aria-label="Key facts">
+            <li><strong>City-level only</strong><span>Never your exact location</span></li>
+            <li><strong>No token yet</strong><span>Product comes first</span></li>
+            <li><strong>Open source</strong><span>Check every line</span></li>
+          </ul>
+        </div>
+
+        <div class="radar" aria-hidden="true">
+          <div class="radar__ring r1"></div><div class="radar__ring r2"></div><div class="radar__ring r3"></div><div class="radar__ring r4"></div>
+          <div class="radar__sweep"></div>
+          <img class="radar__pin" src="/logo.svg" alt="" width="120" height="120">
+          <span class="chip chip--1">📍 check-ins</span>
+          <span class="chip chip--2">😂 local memes</span>
+          <span class="chip chip--3">🗳️ weekly votes</span>
+          <span class="chip chip--4">🏆 city ranks</span>
+        </div>
+      </div>
+
+      <a class="scroll-cue" href="#story" aria-label="Scroll to the tour"><span></span></a>
     </section>
 
-    <section class="card warn" id="scam-warning">
-      <h2>No token exists yet</h2>
-      <p>$VICINITY has <strong>not</strong> been launched. There is no presale, no airdrop and no contract address. Anyone offering you $VICINITY right now is a scammer.</p>
-      <p>When it launches, the only official contract address will be published on this site <em>and</em> in the public GitHub repository.</p>
+    <!-- ============ MARQUEE ============ -->
+    <section class="marquee" aria-label="Every city is welcome">
+      <p class="marquee__label">Every city gets a page</p>
+      <div class="marquee__track" aria-hidden="true">
+        <div class="marquee__row">
+          <span>Utica</span><span>Lagos</span><span>Dhaka</span><span>Austin</span><span>Leeds</span><span>Manila</span><span>Porto</span><span>Nairobi</span><span>Osaka</span><span>Toronto</span><span>Lima</span><span>Kraków</span><span>Chattogram</span><span>Denver</span><span>Accra</span><span>Hanoi</span>
+        </div>
+        <div class="marquee__row">
+          <span>Utica</span><span>Lagos</span><span>Dhaka</span><span>Austin</span><span>Leeds</span><span>Manila</span><span>Porto</span><span>Nairobi</span><span>Osaka</span><span>Toronto</span><span>Lima</span><span>Kraków</span><span>Chattogram</span><span>Denver</span><span>Accra</span><span>Hanoi</span>
+        </div>
+      </div>
     </section>
 
-    <section>
-      <h2>Roadmap</h2>
-      <ol class="roadmap">
-        <li><strong>Phase 1 — Vicinity Map</strong> (building now): city pages, check-ins, local memes, weekly votes.</li>
-        <li><strong>Phase 2 — Vicinity Passport</strong>: collectible stamps for visiting local places. Starts only after Phase 1 has real users.</li>
-        <li><strong>Phase 3 — Vicinity Launchpad</strong>: only after an independent legal review. Not promised.</li>
-      </ol>
+    <!-- ============ SCROLL STORY ============ -->
+    <section class="story" id="story" aria-label="How Vicinity works">
+      <div class="story__sticky">
+        <div class="wrap story__grid">
+          <ol class="story__captions">
+            <li class="caption is-active" data-step="0">
+              <span class="caption__num">01</span>
+              <h2>Every city has inside jokes.</h2>
+              <p>The pothole everyone has named. The pizza place that's always right. The weather nobody warned you about. Right now those jokes are scattered across a hundred group chats.</p>
+            </li>
+            <li class="caption" data-step="1">
+              <span class="caption__num">02</span>
+              <h2>Check in. We only keep the city.</h2>
+              <p>One tap tells Vicinity you're in town today. Your phone's exact position is used once to find the city, then thrown away.</p>
+            </li>
+            <li class="caption" data-step="2">
+              <span class="caption__num">03</span>
+              <h2>Post the memes only locals get.</h2>
+              <p>Your city page becomes its meme wall: made by the people who live there, moderated against spam and scams.</p>
+            </li>
+            <li class="caption" data-step="3">
+              <span class="caption__num">04</span>
+              <h2>Vote. Cities climb by activity.</h2>
+              <p>Each week every city picks its best meme. The leaderboard counts people taking part, never wallet size.</p>
+            </li>
+            <li class="caption" data-step="4">
+              <span class="caption__num">05</span>
+              <h2>Then, and only then, the coin.</h2>
+              <p>$VICINITY launches <strong>after</strong> the map works, with every team wallet published first. Not launched yet.</p>
+            </li>
+          </ol>
+
+          <div class="story__stage">
+            <svg viewBox="0 0 800 600" class="stage" id="stage" role="img" aria-label="Animated illustration of the Vicinity map. Illustration only, not live data.">
+              <defs>
+                <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0" stop-color="#FF5A36" stop-opacity=".45"/>
+                  <stop offset="1" stop-color="#FF5A36" stop-opacity="0"/>
+                </radialGradient>
+                <radialGradient id="coinGrad" cx="35%" cy="30%" r="75%">
+                  <stop offset="0" stop-color="#FFE3A3"/>
+                  <stop offset=".55" stop-color="#FFC857"/>
+                  <stop offset="1" stop-color="#E0962A"/>
+                </radialGradient>
+                <clipPath id="stageClip"><rect width="800" height="600" rx="28"/></clipPath>
+              </defs>
+              <g clip-path="url(#stageClip)">
+                <rect width="800" height="600" class="stage__bg"/>
+                <g id="s-world"></g>
+                <g id="s-city" transform="translate(400 300) scale(0.2)">
+                  <g transform="translate(-400 -300)">
+                    <rect x="-400" y="-300" width="1600" height="1200" class="city__ground"/>
+                    <path d="M-400 420 C 100 360, 260 470, 460 390 S 900 300, 1200 340" class="city__river"/>
+                    <path d="M120 -300 L 250 900 M 560 -300 L 500 900 M -400 180 L 1200 130 M -400 470 L 1200 450" class="city__road"/>
+                    <path d="M300 -300 L 760 900 M -400 330 L 1200 300" class="city__road city__road--minor"/>
+                    <g class="city__blocks">
+                      <rect x="150" y="200" width="70" height="50" rx="6"/><rect x="270" y="190" width="90" height="60" rx="6"/>
+                      <rect x="580" y="210" width="80" height="70" rx="6"/><rect x="600" y="330" width="70" height="60" rx="6"/>
+                      <rect x="170" y="350" width="90" height="55" rx="6"/><rect x="420" y="360" width="60" height="50" rx="6"/>
+                    </g>
+                  </g>
+                </g>
+                <circle id="s-glow" cx="400" cy="300" r="160" fill="url(#glow)" opacity="0"/>
+                <g id="s-rings" transform="translate(400 300)" opacity="0">
+                  <circle r="60" class="ring"/><circle r="110" class="ring ring--dash"/><circle r="170" class="ring ring--faint"/>
+                </g>
+                <g id="s-pin" transform="translate(400 -120)">
+                  <path d="M0-78c-21 0-38 16.4-38 36.8C-38-14 0 22 0 22S38-14 38-41.2C38-61.6 21-78 0-78z" class="pin__body"/>
+                  <circle cy="-42" r="13" class="pin__hole"/>
+                </g>
+                <g id="s-memes">
+                  <g class="meme" data-x="185" data-y="150"><rect x="-110" y="-44" width="220" height="88" rx="16"/><text x="-92" y="-10" class="meme__t">"That pothole has a name"</text><text x="-92" y="18" class="meme__s">▲ 128 · demo</text></g>
+                  <g class="meme" data-x="625" data-y="190"><rect x="-110" y="-44" width="220" height="88" rx="16"/><text x="-92" y="-10" class="meme__t">"Snow day #4 this week"</text><text x="-92" y="18" class="meme__s">▲ 96 · demo</text></g>
+                  <g class="meme" data-x="560" data-y="470"><rect x="-110" y="-44" width="220" height="88" rx="16"/><text x="-92" y="-10" class="meme__t">"Best slice in town. Fight me"</text><text x="-92" y="18" class="meme__s">▲ 74 · demo</text></g>
+                </g>
+                <g id="s-board" transform="translate(70 380)" opacity="0">
+                  <rect width="300" height="170" rx="18" class="board__bg"/>
+                  <text x="22" y="34" class="board__title">City leaderboard · demo</text>
+                  <g transform="translate(22 56)">
+                    <text y="14" class="board__label">Maple Falls</text><rect x="110" y="2" width="0" height="14" rx="7" class="bar bar--1" data-w="150"/>
+                    <text y="50" class="board__label">Port Jasper</text><rect x="110" y="38" width="0" height="14" rx="7" class="bar bar--2" data-w="112"/>
+                    <text y="86" class="board__label">Cedar Bay</text><rect x="110" y="74" width="0" height="14" rx="7" class="bar bar--3" data-w="80"/>
+                  </g>
+                </g>
+                <g id="s-coin" transform="translate(400 300)" opacity="0">
+                  <circle r="120" class="coin__halo"/>
+                  <g id="s-coin-face">
+                    <circle r="92" fill="url(#coinGrad)"/>
+                    <circle r="76" class="coin__inner"/>
+                    <path d="M0-50c-14 0-25 10.8-25 24.2C-25-7 0 17 0 17S25-7 25-25.8C25-39.2 14-50 0-50z" class="coin__pin"/>
+                    <circle cy="-26" r="8" class="coin__hole"/>
+                    <text y="52" text-anchor="middle" class="coin__label">$VICINITY</text>
+                  </g>
+                  <g transform="translate(0 150)">
+                    <rect x="-86" y="-18" width="172" height="36" rx="18" class="coin__tag"/>
+                    <text y="6" text-anchor="middle" class="coin__tagtext">NOT LAUNCHED</text>
+                  </g>
+                </g>
+              </g>
+            </svg>
+            <p class="stage__note">Illustration only, not live data. Place names are fictional demos.</p>
+          </div>
+        </div>
+        <div class="story__dots" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
     </section>
 
-    <section>
-      <h2>Our rules</h2>
-      <ul>
-        <li>We only store your <strong>city</strong>, never your exact location.</li>
-        <li>No fake users, fake counters or paid fake hype.</li>
-        <li>Every wallet the team controls will be published before any launch.</li>
-        <li>The code is open source, so anyone can check it.</li>
-      </ul>
+    <!-- ============ INTERACTIVE DEMO ============ -->
+    <section class="section" id="demo">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Try it · demo</p>
+          <h2>Cast a vote. Watch the board move.</h2>
+          <p class="muted">A playable preview of the weekly vote. These towns are fictional and nothing is saved.</p>
+        </div>
+        <div class="demo reveal" id="vote-demo">
+          <div class="demo__cards">
+            <button class="vote-card" type="button" data-city="Maple Falls" data-votes="42">
+              <span class="vote-card__emoji" aria-hidden="true">🕳️</span>
+              <span class="vote-card__meme">"The pothole on Elm has its own birthday party"</span>
+              <span class="vote-card__city">Maple Falls</span>
+              <span class="vote-card__cta">Vote</span>
+            </button>
+            <button class="vote-card" type="button" data-city="Port Jasper" data-votes="37">
+              <span class="vote-card__emoji" aria-hidden="true">🌫️</span>
+              <span class="vote-card__meme">"Fog so thick the seagulls use GPS"</span>
+              <span class="vote-card__city">Port Jasper</span>
+              <span class="vote-card__cta">Vote</span>
+            </button>
+            <button class="vote-card" type="button" data-city="Cedar Bay" data-votes="29">
+              <span class="vote-card__emoji" aria-hidden="true">🍕</span>
+              <span class="vote-card__meme">"Only one pizza place, and it's closed on Fridays"</span>
+              <span class="vote-card__city">Cedar Bay</span>
+              <span class="vote-card__cta">Vote</span>
+            </button>
+          </div>
+          <div class="demo__board" aria-live="polite">
+            <p class="demo__board-title">Leaderboard <span class="tag">demo</span></p>
+            <ol id="demo-board"></ol>
+            <button class="link-btn" type="button" id="demo-reset">Reset demo</button>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Risk disclosure</h2>
-      <p>Meme coins are highly speculative, and most lose all or nearly all their value. Nothing on this site is financial advice or a promise of profit. Never spend money you can't afford to lose.</p>
+    <!-- ============ WALLET ============ -->
+    <section class="section section--glow" id="wallet">
+      <div class="wrap wallet-grid">
+        <div class="reveal">
+          <p class="kicker">Wallet</p>
+          <h2>Connect and prove it's you. Safely.</h2>
+          <p class="muted">Connect a Solana wallet and sign one plain-text message. That proves you own the address. It's <strong>free</strong>, it's <strong>not a transaction</strong>, and it <strong>can't move funds</strong>.</p>
+          <ul class="safety">
+            <li>We will <strong>never</strong> ask for your secret recovery phrase.</li>
+            <li>We will <strong>never</strong> ask you to approve a transaction on this site today.</li>
+            <li>Before signing, check the message starts with <code id="host-hint">this site's address</code>.</li>
+            <li>We don't store your address. Verification lasts until you close the tab.</li>
+          </ul>
+        </div>
+
+        <div class="wallet card-glass reveal" id="wallet-panel" aria-live="polite">
+          <div class="wallet__state" data-state="idle">
+            <div class="wallet__icon" aria-hidden="true"><img src="/logo.svg" alt="" width="44" height="44"></div>
+            <h3>Choose a wallet</h3>
+            <div class="wallet__list" id="wallet-list"></div>
+            <div class="wallet__empty" id="wallet-empty" hidden>
+              <p class="muted">No Solana wallet found in this browser.</p>
+              <div class="wallet__links">
+                <a class="btn btn--glass btn--sm" id="open-phantom" href="https://phantom.com" rel="noopener">Open in Phantom</a>
+                <a class="btn btn--glass btn--sm" id="open-solflare" href="https://solflare.com" rel="noopener">Open in Solflare</a>
+              </div>
+              <p class="tiny muted">On a phone, these buttons open this page inside the wallet app. On a computer, they take you to the official download pages.</p>
+            </div>
+          </div>
+
+          <div class="wallet__state" data-state="connected" hidden>
+            <div class="addr"><span class="addr__dot" aria-hidden="true"></span><span id="addr-short">—</span><button class="link-btn" type="button" id="copy-addr">Copy</button></div>
+            <p class="muted small">Connected with <span id="wallet-name">wallet</span>. Not verified yet.</p>
+            <button class="btn btn--primary btn--block" type="button" id="verify-btn">Verify ownership (free)</button>
+            <details class="msg-preview"><summary>See the exact message you'll sign</summary><pre id="msg-preview">Loading…</pre></details>
+            <button class="link-btn" type="button" data-disconnect>Disconnect</button>
+          </div>
+
+          <div class="wallet__state" data-state="verified" hidden>
+            <div class="verified-badge" aria-hidden="true">✓</div>
+            <h3>Wallet verified</h3>
+            <p class="addr addr--center"><span id="addr-verified">—</span></p>
+            <p class="muted small">The signature was checked by our server just now. Your address was not stored.</p>
+            <button class="link-btn" type="button" data-disconnect>Disconnect</button>
+          </div>
+
+          <p class="wallet__error" id="wallet-error" role="alert" hidden></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LINK CHECKER ============ -->
+    <section class="section" id="check">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Verify</p>
+          <h2>Is this link really Vicinity?</h2>
+          <p class="muted">Scammers copy new projects fast. Paste any link, token address or @handle and we'll check it against our official list.</p>
+        </div>
+        <form class="checker card-glass reveal" id="checker" novalidate>
+          <label for="check-input" class="sr-only">Link, address or handle to check</label>
+          <input id="check-input" name="q" type="text" autocomplete="off" spellcheck="false" maxlength="300" placeholder="e.g. vicinity-airdrop.xyz, @vicinity, or a token address">
+          <button class="btn btn--primary" type="submit">Check</button>
+        </form>
+        <div class="check-result" id="check-result" aria-live="polite" hidden></div>
+        <div class="official reveal">
+          <p class="official__title">Official list right now</p>
+          <ul>
+            <li><span class="tag tag--ok">Website</span> vicinity-map.noyonsakibul.workers.dev</li>
+            <li><span class="tag tag--ok">Code</span> <a href="https://github.com/FunnyCircuitBox/vicinity-map" rel="noopener">github.com/FunnyCircuitBox/vicinity-map</a></li>
+            <li><span class="tag tag--no">Socials</span> None yet. Any "Vicinity" account is not us.</li>
+            <li><span class="tag tag--no">Token</span> Not launched. No official contract address exists.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TOKEN ============ -->
+    <section id="token" class="section section--panel">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Token</p>
+          <h2>$VICINITY, when it launches</h2>
+        </div>
+        <div class="token-grid">
+          <dl class="specs card-glass reveal">
+            <div><dt>Status</dt><dd><span class="tag tag--warn">Not launched</span></dd></div>
+            <div><dt>Chain</dt><dd>Solana</dd></div>
+            <div><dt>Launch method</dt><dd>Fair launch on pump.fun</dd></div>
+            <div><dt>Presale</dt><dd>None, ever</dd></div>
+            <div><dt>Contract address</dt><dd>Not yet. It'll be published here <em>and</em> on GitHub.</dd></div>
+            <div><dt>Team wallets</dt><dd>Listed publicly before launch</dd></div>
+          </dl>
+          <div class="card-glass reveal">
+            <h3>What the token is, and isn't</h3>
+            <ul class="checklist">
+              <li class="yes">A community meme coin for people who enjoy the map</li>
+              <li class="yes">Small, public rewards for contributions like meme of the week</li>
+              <li class="no">Not required to use Vicinity</li>
+              <li class="no">Not an investment, and no promise of profit</li>
+              <li class="no">No holder payouts or "passive income"</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ROADMAP ============ -->
+    <section id="roadmap" class="section">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Roadmap</p>
+          <h2>Built in public, one milestone at a time</h2>
+        </div>
+        <ol class="timeline" id="timeline">
+          <li class="timeline__item is-done reveal"><span class="timeline__status">Done</span><h3>Milestone 1: Foundation</h3><p>Website, open-source code, secure automatic deployment, wallet verification and link checker.</p></li>
+          <li class="timeline__item is-next reveal"><span class="timeline__status">Next</span><h3>Milestone 2: The map</h3><p>Interactive map and city pages. Test cities clearly labeled "demo."</p></li>
+          <li class="timeline__item reveal"><span class="timeline__status">Planned</span><h3>Milestones 3–4: Check-ins, memes & votes</h3><p>Posting, moderation, weekly votes and the real city leaderboard.</p></li>
+          <li class="timeline__item reveal"><span class="timeline__status">Planned</span><h3>Milestone 5: Private beta</h3><p>Real people in 2–3 cities. No fake accounts, no bots.</p></li>
+          <li class="timeline__item reveal"><span class="timeline__status">Planned</span><h3>Milestone 6: $VICINITY launch</h3><p>Fair launch on pump.fun (Solana), all team wallets published beforehand.</p></li>
+        </ol>
+        <p class="note reveal">Later ideas, <strong>Vicinity Passport</strong> (stamps for visiting local places) and a <strong>Vicinity Launchpad</strong>, are not promises. The launchpad only happens after an independent legal review.</p>
+      </div>
+    </section>
+
+    <!-- ============ TRANSPARENCY ============ -->
+    <section class="section section--panel">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <p class="kicker">Transparency</p>
+          <h2>Check everything yourself</h2>
+        </div>
+        <div class="grid-3">
+          <div class="card-glass reveal"><h3>Wallets we control</h3><p class="big">0</p><p class="muted">None yet. Each will be listed here with a link to view it on the blockchain.</p></div>
+          <div class="card-glass reveal"><h3>Money raised</h3><p class="big">$0</p><p class="muted">No presale, no donations, no investors. Built on free tools so far.</p></div>
+          <div class="card-glass reveal"><h3>Our rules</h3><ul class="plain"><li>City-level location only</li><li>No fake users, counters or paid hype</li><li>Paid promotions always disclosed</li><li>Open-source code</li></ul></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section id="faq" class="section">
+      <div class="wrap"><div class="faq">
+        <div class="section-head reveal"><p class="kicker">FAQ</p><h2>Questions</h2></div>
+        <details class="reveal"><summary>Can I buy $VICINITY now?</summary><p>No. It hasn't launched. No presale, no whitelist, no airdrop. If someone offers you one, it's a scam. Use the checker above.</p></details>
+        <details class="reveal"><summary>Is connecting my wallet safe?</summary><p>Connecting only shares your public address. Verifying asks you to sign a plain message, which can't move funds. Never approve a transaction or share your recovery phrase on any site you don't fully trust.</p></details>
+        <details class="reveal"><summary>Do I need crypto to use the map?</summary><p>No. The map will be free. A wallet is only needed if you want community rewards later.</p></details>
+        <details class="reveal"><summary>What location data do you keep?</summary><p>Only the name of your city. Your exact position is used once to find it, then discarded.</p></details>
+        <details class="reveal"><summary>Who is behind this?</summary><p>A small independent builder. All code is public on GitHub so you can check it yourself.</p></details>
+        <details class="reveal"><summary>Will the price go up?</summary><p>Nobody honest can tell you that. Most meme coins lose nearly all their value. Join for the community and the fun, never with money you can't afford to lose.</p></details>
+      </div></div>
+    </section>
+
+    <!-- ============ RISK ============ -->
+    <section class="section section--tight">
+      <div class="wrap">
+        <div class="risk reveal">
+          <h2>Risk disclosure</h2>
+          <p>Meme coins are highly speculative, and most lose all or nearly all their value. Nothing on this site is financial, legal or tax advice, or a promise of profit. Crypto transactions can't be reversed. Always double-check addresses, and never share your wallet's secret phrase with anyone.</p>
+        </div>
+      </div>
     </section>
   </main>
 
-  <footer class="wrap">
-    <p>Status: <span id="status">checking…</span></p>
-    <p><a href="https://github.com/FunnyCircuitBox/vicinity-map" rel="noopener">Source code on GitHub</a></p>
+  <footer class="site-footer">
+    <div class="wrap site-footer__inner">
+      <div class="brand"><img src="/logo.svg" alt="" width="28" height="28"><span>Vicinity</span></div>
+      <p class="muted">Represent your city.</p>
+      <p class="muted">System status: <span id="status">checking…</span></p>
+      <p><a href="https://github.com/FunnyCircuitBox/vicinity-map" rel="noopener">Source code (MIT)</a></p>
+    </div>
   </footer>
 
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script src="/app.js" defer></script>
 </body>
 </html>
