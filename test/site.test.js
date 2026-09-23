@@ -4,9 +4,14 @@ import { readFileSync, existsSync } from "node:fs";
 
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
 
-test("page states clearly that no token has launched", () => {
-  assert.match(html, /has not launched/i);
-  assert.match(html, /Risk disclosure/);
+test("page explains the token, holders, launchpad and official list", () => {
+  for (const id of ["token", "holders", "wallet", "launchpad", "check"]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /No rug pull/);
+  assert.match(html, /Founding Supporter/);
+});
+
+test("no links to the source code repository", () => {
+  assert.doesNotMatch(html, /github\.com/i);
 });
 
 test("page loads nothing from other websites (privacy + security)", () => {
@@ -32,7 +37,7 @@ test("illustration and demo are labeled so nobody mistakes them for real activit
   assert.match(html, /These towns are fictional and nothing is saved/);
 });
 
-test("wallet section promises no seed phrase and no transactions", () => {
-  assert.match(html, /never<\/strong> ask for your secret recovery phrase/);
-  assert.match(html, /not a transaction/);
+test("wallet section: no seed phrase, signing is not a transaction", () => {
+  assert.match(html, /never ask for your recovery phrase/);
+  assert.match(html, /isn't a transaction/);
 });

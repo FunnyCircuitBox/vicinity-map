@@ -41,8 +41,7 @@ test("link checker: official site, official GitHub, fakes", async () => {
   assert.equal(await check("https://vicinitycity.net"), "official");
   assert.equal(await check("www.vicinitycity.net/whatever"), "official");
   assert.equal(await check("vicinitycity.net.evil.io"), "not_official");
-  assert.equal(await check("github.com/FunnyCircuitBox/vicinity-map"), "official");
-  assert.equal(await check("https://github.com/FunnyCircuitBox/vicinity-map-fake"), "not_official");
+  assert.equal(await check("https://github.com/someone/vicinity-map"), "not_official");
   assert.equal(await check("vicinity-airdrop.xyz"), "not_official");
   assert.equal(await check("@vicinity_official"), "not_official");
   assert.equal(await check("So11111111111111111111111111111111111111112"), "not_official");
