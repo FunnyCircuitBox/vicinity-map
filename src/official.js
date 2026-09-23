@@ -4,8 +4,8 @@
  * Change it only by a public commit so everyone can see the history.
  */
 export const OFFICIAL = {
-  updated: "2026-09-23",
-  websites: ["vicinity-map.noyonsakibul.workers.dev"],
+  updated: "2026-09-23", // vicinitycity.net is the main address
+  websites: ["vicinitycity.net", "vicinity-map.noyonsakibul.workers.dev"],
   github: ["github.com/funnycircuitbox/vicinity-map"],
   socials: [],            // none yet: any "Vicinity" social account is not us
   tokenContract: null,    // not launched: no official contract address exists
