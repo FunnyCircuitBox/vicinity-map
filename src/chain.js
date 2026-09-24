@@ -93,3 +93,26 @@ export async function getHolding(env, owner, mint, fetchImpl) {
   for (const acc of res?.value || []) amount += Number(acc.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
   return amount;
 }
+
+/**
+ * $VICINITY balances of many wallets at once, using JSON-RPC batches (25 per request).
+ * Returns Map(owner → amount). Read-only; nothing is stored.
+ */
+export async function getHoldings(env, owners, mint, fetchImpl = fetch) {
+  const url = (env && env.SOLANA_RPC_URL) || PUBLIC_RPC;
+  const out = new Map();
+  for (let i = 0; i < owners.length; i += 25) {
+    const chunk = owners.slice(i, i + 25);
+    const body = chunk.map((o, j) => ({ jsonrpc: "2.0", id: j, method: "getTokenAccountsByOwner", params: [o, { mint }, { encoding: "jsonParsed" }] }));
+    const res = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`rpc_http_${res.status}`);
+    const data = await res.json();
+    for (const r of Array.isArray(data) ? data : []) {
+      if (r.error) throw new Error(`rpc_${r.error.code || "error"}`);
+      let amount = 0;
+      for (const acc of r.result?.value || []) amount += Number(acc.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0);
+      out.set(chunk[r.id], amount);
+    }
+  }
+  return out;
+}

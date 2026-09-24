@@ -71,6 +71,10 @@ export function d1Store(db) {
       ]);
       return "c" + ins.meta.last_row_id;
     },
+    async claimsByCountry(country, limit = 100) {
+      const { results } = await db.prepare("SELECT city_id, wallet, city_name, claimed_at FROM claims WHERE country = ? ORDER BY claimed_at LIMIT ?").bind(country, limit).all();
+      return results;
+    },
     async listAll() {
       const [claims, added] = await db.batch([
         db.prepare("SELECT city_id, wallet, city_name, country, claimed_at FROM claims ORDER BY claimed_at DESC"),
@@ -102,6 +106,10 @@ export function memoryStore() {
       insert({ cityId, wallet, cityName: name, country, at });
       added.push({ id, name, norm, country, lat, lon });
       return cityId;
+    },
+    async claimsByCountry(country, limit = 100) {
+      return [...claims.entries()].filter(([, c]) => c.country === country).slice(0, limit)
+        .map(([id, c]) => ({ city_id: id, wallet: c.wallet, city_name: c.cityName, claimed_at: c.at }));
     },
     async listAll() {
       return {

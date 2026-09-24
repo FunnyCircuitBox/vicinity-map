@@ -11,17 +11,19 @@
  *   GET  /api/token           → live token facts (supply, minting/freezing disabled)
  *   GET  /api/holders         → live top holders from the blockchain
  *   GET  /api/claims          → every claimed city + community-added cities
- *   POST /api/claim           → claim a city (signed message + live location + 1M hold)
+ *   POST /api/claim           → claim a city (signed message + live location + network check + 1M hold)
+ *   GET  /api/moderator?country=US → that country's moderator (founder holding the most $VICINITY)
  *
  * Everything else is served from /public by Cloudflare's static asset handler.
  * Database (D1, binding DB) holds city claims only. Visitor locations are never saved.
  * Optional secret: SOLANA_RPC_URL.
  */
 import { OFFICIAL, VICINITY_MINT, checkOfficial } from "./official.js";
-import { getHolding, getTokenFacts, getTopHolders } from "./chain.js";
+import { getHolding, getHoldings, getTokenFacts, getTopHolders } from "./chain.js";
 import { base58Encode, buildMessage, CITY_NAME_RE, isSolanaAddress, parseMessage, statementFor, verifySignature } from "./solana.js";
 import { BIG_CITY_RADIUS_KM, CLAIM_MIN_HOLD, CLAIM_RADIUS_KM, MAX_LOCATION_ACCURACY_M, cleanLocation, countryCities, distanceKm, normName, radiusFor } from "./cities.js";
 import { d1Store } from "./store.js";
+import { networkCheck } from "./network.js";
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy":
@@ -134,12 +136,13 @@ export const claimRules = (env) => ({ minHold: CLAIM_MIN_HOLD, radiusKm: CLAIM_R
 
 export const storeFor = (env) => env.store || d1Store(env.DB);
 
+
 /**
  * Claim a city (or add a missing one and claim it).
  * Body: { address, message, signature, location: { lat, lon, accuracy } }
  * The location is used for the distance check only and is never saved.
  */
-export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl = fetch) {
+export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl = fetch, cf = request.cf) {
   const r = await readSigned(request, now, ["claim", "add"], "claimed");
   if (r.error) return r.error;
   const { parsed, body } = r;
@@ -182,6 +185,13 @@ export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl
   const dist = distanceKm(loc.lat, loc.lon, city.lat, city.lon);
   if (city.id && dist > radiusFor(city)) return no("not_in_city", 403, { km: Math.round(dist), radiusKm: radiusFor(city) });
 
+  // Does the internet connection agree with the GPS? (blocks VPNs, proxies and far-away spoofing)
+  const net = networkCheck(cf, loc, city.country);
+  if (net) {
+    console.log("claim blocked by network check", net.error, cf && cf.country);
+    return no(net.error, 403, net);
+  }
+
   // One wallet, one city.
   const mine = await store.claimByWallet(wallet);
   if (mine) return no("wallet_has_city", 409, { city: mine });
@@ -207,6 +217,32 @@ export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl
   }
   console.log("city claimed", city.id, wallet.slice(0, 4) + "…" + wallet.slice(-4));
   return json({ claimed: true, cityId: city.id, cityName: city.name, country: city.country, wallet, claimedAt: at, amount });
+}
+
+/**
+ * Country moderator = the city founder in that country who holds the most $VICINITY
+ * right now (checked live on-chain). Team wallets can't be moderators.
+ * The final moderator is fixed at the Launchpad snapshot.
+ */
+export async function handleModerator(env, cc, fetchImpl = fetch) {
+  const mint = activeMint(env);
+  const base = { country: cc, launched: Boolean(mint), rule: "The city founder in this country holding the most $VICINITY. Fixed at the Launchpad snapshot." };
+  if (!mint || (!env.DB && !env.store)) return json({ ...base, moderator: null, founders: 0 });
+  try {
+    const team = new Set(OFFICIAL.teamWallets || []);
+    const founders = (await storeFor(env).claimsByCountry(cc)).filter((f) => !team.has(f.wallet));
+    if (!founders.length) return json({ ...base, moderator: null, founders: 0 });
+    const bal = await getHoldings(env, founders.map((f) => f.wallet), mint, fetchImpl);
+    let best = null;
+    for (const f of founders) {
+      const amount = bal.get(f.wallet) || 0;
+      if (!best || amount > best.amount) best = { wallet: f.wallet, city: f.city_name, cityId: f.city_id, amount };
+    }
+    return json({ ...base, moderator: best && best.amount > 0 ? best : null, founders: founders.length, updatedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error("moderator lookup failed", String(e));
+    return json({ ...base, error: "chain_unavailable" }, 503);
+  }
 }
 
 export async function handleApi(request, env = {}, fetchImpl = fetch) {
@@ -269,6 +305,13 @@ export async function handleApi(request, env = {}, fetchImpl = fetch) {
     }
     case "/api/claim":
       return only("POST") || handleClaim(request, env, Date.now(), fetchImpl);
+    case "/api/moderator": {
+      const blocked = only("GET");
+      if (blocked) return blocked;
+      const cc = url.searchParams.get("country") || "";
+      if (!/^[A-Z]{2}$/.test(cc)) return json({ error: "bad_country" }, 400);
+      return cached("moderator-" + cc + "-" + (activeMint(env) || "none"), 120, () => handleModerator(env, cc, fetchImpl));
+    }
     case "/api/claims": {
       const blocked = only("GET");
       if (blocked) return blocked;
