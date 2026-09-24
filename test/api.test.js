@@ -109,3 +109,11 @@ test("crashes become a safe 500 without leaking details", async () => {
   assert.equal(res.status, 500);
   assert.deepEqual(await res.json(), { error: "internal_error" });
 });
+
+test("the Worker entry file only exports functions (Cloudflare refuses to start otherwise)", async () => {
+  const mod = await import("../src/index.js");
+  for (const [name, value] of Object.entries(mod)) {
+    if (name === "default") assert.equal(typeof value.fetch, "function");
+    else assert.equal(typeof value, "function", `export "${name}" must be a function`);
+  }
+});

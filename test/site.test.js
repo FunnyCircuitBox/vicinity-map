@@ -49,3 +49,11 @@ test("claim-your-city section: rules are stated plainly, location is not kept", 
   assert.match(html, /never save it/);
   assert.match(html, /GeoNames/);
 });
+
+test("map v2: zoom controls, coin preview, live feed, moderator row, scripts in order", () => {
+  for (const id of ["map-in", "map-out", "map-reset", "coin-preview", "coin-ticker", "claim-feed", "mod-row"]) assert.ok(html.includes(`id="${id}"`), id);
+  assert.match(html, /Sample only/);
+  assert.match(html, /VPNs are blocked/);
+  const order = [...html.matchAll(/<script src="\/([a-z]+)\.js"/g)].map((m) => m[1]);
+  assert.deepEqual(order, ["app", "ticker", "cities"]);
+});

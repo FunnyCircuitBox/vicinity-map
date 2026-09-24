@@ -152,3 +152,61 @@ test("real city list covers every inhabited country", async () => {
   for (const [cc, rows] of Object.entries(data.byCountry)) assert.equal((await countryCities(realEnv, cc)).length, rows.length, cc);
   assert.equal(await countryCities(realEnv, "ZZ"), null);
 });
+
+test("network check: VPNs, Tor, other countries and far-away connections are refused", async () => {
+  const w = await wallet(); holdings[w.address] = 2_000_000;
+  const tryWith = async (cf) => { const res = await handleClaim(await claimReq(w, "claim", { cityId: "5142056", country: "US" }, UTICA), env, Date.now(), rpc(holdings), cf); return res.json(); };
+  assert.equal((await tryWith({ country: "US", asOrganization: "DigitalOcean, LLC", latitude: "43.1", longitude: "-75.2" })).error, "vpn_detected");
+  assert.equal((await tryWith({ country: "US", asOrganization: "Mullvad VPN AB" })).error, "vpn_detected");
+  assert.equal((await tryWith({ country: "T1" })).error, "vpn_detected");
+  const other = await tryWith({ country: "DE", asOrganization: "Deutsche Telekom AG", latitude: "52.5", longitude: "13.4" });
+  assert.equal(other.error, "network_mismatch"); assert.equal(other.networkCountry, "DE");
+  const far = await tryWith({ country: "US", asOrganization: "Comcast Cable", latitude: "34.05", longitude: "-118.24" }); // Los Angeles
+  assert.equal(far.error, "network_mismatch"); assert.ok(far.networkKm > 3000);
+  // a normal home/mobile connection nearby passes (mobile IPs are often 100-300 km off, so that's allowed)
+  const ok = await tryWith({ country: "US", asOrganization: "Charter Communications", latitude: "43.05", longitude: "-76.15" }); // Syracuse
+  assert.equal(ok.claimed, true);
+});
+
+test("country moderator = the founder in that country holding the most $VICINITY", async () => {
+  const { handleModerator } = await import("../src/index.js");
+  const { OFFICIAL } = await import("../src/official.js");
+  const batchRpc = async (_u, init) => {
+    const calls = JSON.parse(init.body);
+    return new Response(JSON.stringify(calls.map((c) => ({ id: c.id, result: { value: holdings[c.params[0]] ? [{ account: { data: { parsed: { info: { tokenAmount: { uiAmount: holdings[c.params[0]] } } } } } }] : [] } }))));
+  };
+  // before launch: nobody yet
+  env.VICINITY_MINT = null;
+  assert.equal((await (await handleModerator(env, "US", batchRpc)).json()).moderator, null);
+  env.VICINITY_MINT = MINT;
+  const [a, b, c, team] = [await wallet(), await wallet(), await wallet(), await wallet()];
+  holdings[a.address] = 1_200_000; holdings[b.address] = 9_000_000; holdings[c.address] = 3_000_000; holdings[team.address] = 50_000_000;
+  await env.store.insertClaim({ cityId: "5142056", wallet: a.address, cityName: "Utica", country: "US", at: "2026-01-01" });
+  await env.store.insertClaim({ cityId: "5128581", wallet: b.address, cityName: "New York City", country: "US", at: "2026-01-02" });
+  await env.store.insertClaim({ cityId: "1185241", wallet: c.address, cityName: "Dhaka", country: "BD", at: "2026-01-03" });
+  await env.store.insertClaim({ cityId: "999", wallet: team.address, cityName: "Test", country: "US", at: "2026-01-04" });
+  OFFICIAL.teamWallets.push(team.address);
+  try {
+    const us = await (await handleModerator(env, "US", batchRpc)).json();
+    assert.equal(us.moderator.wallet, b.address); assert.equal(us.moderator.city, "New York City"); assert.equal(us.founders, 2);
+    assert.equal((await (await handleModerator(env, "BD", batchRpc)).json()).moderator.wallet, c.address);
+    assert.equal((await (await handleModerator(env, "FR", batchRpc)).json()).moderator, null);
+  } finally { OFFICIAL.teamWallets.pop(); }
+  assert.equal((await handleApi(new Request(`https://${HOST}/api/moderator?country=us`), env)).status, 400);
+});
+
+test("city coin tickers are unique for every listed city, and same names are resolved", async () => {
+  await import("../public/ticker.js");
+  const data = JSON.parse(readFileSync(new URL("../public/data/cities.json", import.meta.url), "utf8"));
+  const cities = Object.entries(data.byCountry).flatMap(([cc, rows]) => rows.map(([id, name, adm, , , pop]) => ({ id: String(id), name, cc, adm, pop })));
+  const t = globalThis.vicinityTicker.assign(cities);
+  const all = [...t.values()].map((v) => v.ticker);
+  assert.equal(new Set(all).size, cities.length, "no two cities share a ticker");
+  assert.ok(all.every((x) => /^[A-Z0-9]{2,10}$/.test(x)), "tickers are 2-10 capital letters/digits");
+  const of = (name, cc) => t.get(cities.find((c) => c.name === name && c.cc === cc).id).ticker;
+  assert.equal(of("Utica", "US"), "UTICA");
+  assert.equal(of("London", "GB"), "LONDON");    // biggest keeps the plain ticker
+  assert.equal(of("London", "CA"), "LONDONCA");  // the other adds its country
+  assert.equal(of("New York City", "US"), "NYC");
+  assert.equal(globalThis.vicinityTicker.baseTicker("Łódź"), "LODZ");
+});
