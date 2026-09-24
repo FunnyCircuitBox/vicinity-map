@@ -55,5 +55,12 @@ test("map v2: zoom controls, coin preview, live feed, moderator row, scripts in 
   assert.match(html, /Sample only/);
   assert.match(html, /VPNs are blocked/);
   const order = [...html.matchAll(/<script src="\/([a-z]+)\.js"/g)].map((m) => m[1]);
-  assert.deepEqual(order, ["app", "ticker", "cities"]);
+  assert.deepEqual(order, ["theme", "app", "ticker", "cities"]);
+});
+
+test("theme: toggle in the header, theme script runs before paint (not deferred)", () => {
+  assert.match(html, /data-theme-toggle/);
+  assert.match(html, /<script src="\/theme\.js"><\/script>\s*<\/head>/);
+  const css = readFileSync(new URL("../public/style.css", import.meta.url), "utf8");
+  assert.match(css, /:root\[data-theme="light"\]/);
 });

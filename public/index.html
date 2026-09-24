@@ -6,7 +6,7 @@
   <title>Vicinity — Represent your city</title>
   <meta name="description" content="Vicinity is a community map where every city gets its own page. Check in, post local memes, vote weekly. Cities rank by community activity, not coin holdings.">
   <meta name="theme-color" content="#070E19">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <meta property="og:title" content="Vicinity — Represent your city">
   <meta property="og:description" content="Every city gets a page. Hold $VICINITY, verify your wallet, and back your city for the Vicinity Launchpad.">
   <meta property="og:type" content="website">
@@ -14,6 +14,7 @@
   <link rel="preload" href="/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
+  <script src="/theme.js"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -33,9 +34,12 @@
         <a href="#launchpad">Launchpad</a>
         <a href="#wallet">Verify</a>
       </nav>
-      <button class="btn btn--primary btn--sm" type="button" data-open-wallet>
-        <span class="btn__dot" aria-hidden="true"></span><span data-wallet-label>Connect wallet</span>
-      </button>
+      <div class="site-header__actions">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch to light mode" aria-pressed="false"><span class="moon" aria-hidden="true">☾</span><span class="sun" aria-hidden="true">☀</span></button>
+        <button class="btn btn--primary btn--sm" type="button" data-open-wallet>
+          <span class="btn__dot" aria-hidden="true"></span><span data-wallet-label>Connect wallet</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -376,17 +380,18 @@
 
         <div class="citymap card-glass reveal">
           <div class="citymap__stage">
-            <canvas id="city-canvas" width="1200" height="480" role="img" aria-label="Zoomable world map of every listed city. Orange dots are claimed cities; circles show each city's claim zone."></canvas>
+            <canvas id="city-canvas" width="1200" height="480" role="img" tabindex="0" aria-label="Zoomable world map of every listed city. Zoom into a country to see each city's boundary. Use arrow keys to move and + or − to zoom."></canvas>
             <p class="citymap__tip" id="city-tip" hidden></p>
-            <div class="map-ctrl" role="group" aria-label="Map zoom">
+            <div class="map-ctrl" role="group" aria-label="Map controls">
               <button type="button" id="map-in" aria-label="Zoom in">+</button>
               <button type="button" id="map-out" aria-label="Zoom out">−</button>
               <button type="button" id="map-reset" aria-label="Show the whole world">⟲</button>
+              <button type="button" id="map-locate" aria-label="Find the city I'm in" title="Find the city I'm in">◎</button>
               <span id="map-zoom-level" aria-live="polite">1.0×</span>
             </div>
             <p class="map-hint" id="map-hint">Click the map first, then scroll to zoom (or use + and −)</p>
           </div>
-          <p class="citymap__legend"><span><span class="dot dot--open"></span> Open</span><span><span class="dot dot--claimed"></span> Claimed</span><span><span class="dot dot--mine"></span> Yours</span><span><span class="dot dot--zone"></span> Claim zone: 25 km, or 50 km for cities over 1M people</span><span class="citymap__how">Drag to move · scroll, pinch or double-tap to zoom · tap a city</span></p>
+          <p class="citymap__legend"><span><span class="dot dot--open"></span> Open</span><span><span class="dot dot--claimed"></span> Claimed</span><span><span class="dot dot--mine"></span> Yours</span><span><span class="line line--real"></span> Official city boundary + the land nearest to it</span><span><span class="line line--near"></span> No official boundary: the land nearest the city</span><span class="citymap__how">Drag to move · scroll, pinch or double-tap to zoom · tap a country or a city · ◎ finds yours</span></p>
           <div class="claim-feed-wrap">
             <p class="kicker kicker--live"><span class="live-dot" aria-hidden="true"></span>Latest claims · live</p>
             <ul class="claim-feed" id="claim-feed" aria-live="polite"><li class="claim-feed__empty">Loading…</li></ul>
@@ -437,7 +442,7 @@
             <ol class="reqs" id="claim-reqs">
               <li data-req="wallet"><span class="req__dot"></span><div><strong>Connect your wallet</strong><p class="tiny muted" id="req-wallet-text">Any Solana wallet. <a href="#wallet">Connect here</a>.</p></div></li>
               <li data-req="hold"><span class="req__dot"></span><div><strong>Hold 1,000,000+ $VICINITY</strong><p class="tiny muted">Checked live on the blockchain when you claim. Keep holding: claims are re-checked at the Launchpad snapshot.</p></div></li>
-              <li data-req="here"><span class="req__dot"></span><div><strong>Be in the city</strong><p class="tiny muted" id="req-here-text">Share your location once. We check you're inside the city (25 km, or 50 km for cities over 1M people) and that your internet connection is local too. VPNs are blocked. We never save it.</p></div></li>
+              <li data-req="here"><span class="req__dot"></span><div><strong>Be in the city</strong><p class="tiny muted" id="req-here-text">Share your location once. We check you're inside the city's boundary on the map and that your internet connection is local too. VPNs are blocked. We never save it.</p></div></li>
               <li data-req="follow" id="req-follow" hidden><span class="req__dot"></span><div><strong>Follow Vicinity on X</strong><p class="tiny muted"><a id="follow-link" href="#" target="_blank" rel="noopener">Open X ↗</a> <label class="inline-check"><input type="checkbox" id="follow-ok"> I followed</label></p></div></li>
               <li data-req="sign"><span class="req__dot"></span><div><strong>Sign one message</strong><p class="tiny muted">Free, not a transaction, can't move funds.</p></div></li>
             </ol>
@@ -451,7 +456,7 @@
             </div>
           </div>
         </div>
-        <p class="tiny muted reveal">Claimed cities show the claiming wallet publicly, like a name on a leaderboard. Just verifying a wallet never saves it. City data: <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0).</p>
+        <p class="tiny muted reveal">Claimed cities show the claiming wallet publicly, like a name on a leaderboard. Just verifying a wallet never saves it. City data: <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0). City boundaries: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL). Country outlines: Natural Earth.</p>
       </div>
     </section>
 

@@ -1,0 +1,5 @@
+{
+  "_help": "Hand corrections for 'one coin per big city' (used by 3-build.mjs). keepSeparate: GeoNames ids that must keep their own coin. merge: { childId: parentId } to force a place into a bigger city's coin. Ids are the numbers in public/data/cities.json.",
+  "keepSeparate": [],
+  "merge": {}
+}

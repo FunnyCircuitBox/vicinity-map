@@ -5,8 +5,9 @@
  *
  * Rules (the same numbers are shown on the website):
  *   - hold at least CLAIM_MIN_HOLD $VICINITY in the claiming wallet
- *   - be inside the city: within CLAIM_RADIUS_KM of its center
- *     (big cities of 1M+ people get BIG_CITY_RADIUS_KM)
+ *   - be inside the city: inside its boundary on the map (public/data/bounds, see src/geo.js).
+ *     Cities without a boundary (community-added ones) use the old rule: within CLAIM_RADIUS_KM
+ *     of the center (BIG_CITY_RADIUS_KM for 1M+ people)
  *   - one wallet = one city, one city = one wallet
  * The visitor's location is only used for this one check. It is never saved.
  */
@@ -50,7 +51,21 @@ export async function countryCities(env, cc) {
   countryCache.set(cc, list);
   return list;
 }
-export const _resetCityCache = () => { textCache = null; countryCache.clear(); };
+/**
+ * A country's city boundary file (public/data/bounds/XX.txt, format in geo.js) as text, or null if
+ * there isn't one (then claims fall back to the old distance rule). Kept for the worker's lifetime.
+ */
+const boundsCache = new Map();
+export async function countryBounds(env, cc) {
+  if (!/^[A-Z]{2}$/.test(cc || "")) return null;
+  if (boundsCache.has(cc)) return boundsCache.get(cc);
+  const res = await env.ASSETS.fetch(new Request(`https://assets.local/data/bounds/${cc}.txt`));
+  const text = res.ok ? await res.text() : null;
+  if (boundsCache.size > 40) boundsCache.clear();
+  boundsCache.set(cc, text);
+  return text;
+}
+export const _resetCityCache = () => { textCache = null; countryCache.clear(); boundsCache.clear(); };
 
 /** Distance in km between two points on Earth. */
 export function distanceKm(lat1, lon1, lat2, lon2) {

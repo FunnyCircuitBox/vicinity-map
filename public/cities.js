@@ -36,16 +36,77 @@
   /* =================== the map =================== */
   // World → screen: equirectangular, latitude 84°N … 60°S. view: zoom k, offset tx/ty (CSS px).
   // s0 = pixels per degree at zoom 1, chosen so the world always fills the map box (wide screens and phones).
-  let W = 0, H = 0, s0 = 1, dpr = 1, k = 1, tx = 0, ty = 0, hover = null, onScreen = false, raf = 0, needDraw = true;
+  // Shapes are Path2D objects in "degree space" (x = lon + 180, y = 84 − lat), drawn with a single transform.
+  let W = 0, H = 0, s0 = 1, dpr = 1, k = 1, tx = 0, ty = 0, hover = null, hoverCountry = null, onScreen = false, raf = 0, needDraw = true;
   const ripples = [];
   const wx = (lon) => (lon + 180) * s0;
   const wy = (lat) => (84 - lat) * s0;
   const sx = (lon) => wx(lon) * k + tx;
   const sy = (lat) => wy(lat) * k + ty;
-  const pxPerDeg = () => s0 * k;
   const clampView = () => { tx = Math.min(0, Math.max(W - 360 * s0 * k, tx)); ty = Math.min(0, Math.max(H - 144 * s0 * k, ty)); };
   const canPan = () => 360 * s0 * k > W + 1 || 144 * s0 * k > H + 1;
-  const MAXK = 220;
+  const MAXK = 900;
+  const AREA_K = 5; // city boundaries appear from this zoom
+
+  // colours come from the theme (style.css --map-*), so the map follows the dark / light toggle
+  let pal = {};
+  function readPalette() {
+    const cs = getComputedStyle(document.documentElement), v = (n) => cs.getPropertyValue(n).trim();
+    const light = document.documentElement.dataset.theme === "light";
+    pal = { light, land: v("--map-land"), landLine: v("--map-land-line"), area: v("--map-area"), areaLine: v("--map-area-line"), dot: v("--map-dot"), label: v("--map-label"), halo: v("--map-halo"),
+      hoverFill: light ? "rgba(43,91,255,.14)" : "rgba(127,163,214,.2)", claimedText: light ? "#C23A1C" : "#FFB39C",
+      tagBg: light ? "rgba(255,255,255,.95)" : "rgba(7,14,25,.9)", tagText: light ? "#8A5A00" : "#FFE3A3", grid: light ? "rgba(11,22,38,.06)" : "rgba(149,162,184,.07)" };
+    needDraw = true; kick();
+  }
+  window.addEventListener("vicinity:theme", readPalette);
+
+  // ---- geometry (same encoding as src/geo.js) ----
+  const decodeRing = (flat, unit) => { const out = new Array(flat.length / 2); let x = 0, y = 0; for (let i = 0; i < flat.length; i += 2) { x += flat[i]; y += flat[i + 1]; out[i / 2] = [x * unit, y * unit]; } return out; };
+  const inRing = (lon, lat, r) => { let inside = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside; } return inside; };
+  const inArea = (lon, lat, area) => area.some(([outer, ...holes]) => inRing(lon, lat, outer) && !holes.some((h) => inRing(lon, lat, h)));
+  const inBox = (lon, lat, b) => lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3];
+  const boxOf = (area) => { let a = 1e9, b = 1e9, c = -1e9, d = -1e9; for (const [o] of area) for (const [x, y] of o) { if (x < a) a = x; if (y < b) b = y; if (x > c) c = x; if (y > d) d = y; } return [a, b, c, d]; };
+  const toPath = (area) => { const p = new Path2D(); for (const poly of area) for (const ring of poly) { ring.forEach(([lon, lat], i) => (i ? p.lineTo(lon + 180, 84 - lat) : p.moveTo(lon + 180, 84 - lat))); p.closePath(); } return p; };
+  const kmArea = (area) => { let s = 0; for (const poly of area) poly.forEach((r, i) => { let t = 0; for (let a = 0, b = r.length - 1; a < r.length; b = a++) t += (r[b][0] - r[a][0]) * (r[b][1] + r[a][1]); s += (i ? -1 : 1) * Math.abs(t / 2) * 111.32 * Math.cos((r[0][1] * Math.PI) / 180) * 110.57; }); return s; };
+
+  // ---- map data: country outlines + city boundaries (loaded one country at a time) ----
+  let world = [];                // [{ cc, box, area, path }]
+  let boundsIndex = {};          // cc → { box, bytes }
+  let parts = new Map();         // neighbourhood id → id of the city it's part of (one coin per big city)
+  let members = new Map();       // city id → the listed places that share its coin
+  let joined = new Set();        // parts that were just outside the city and got added to its area
+  const areas = new Map();       // city id → { kind: "r" official | "n" nearest land, box, area, path, km2 }
+  const boundsLoads = new Map(); // cc → Promise
+  function loadBounds(cc) {
+    if (!boundsIndex[cc]) return Promise.resolve();
+    if (!boundsLoads.has(cc)) {
+      boundsLoads.set(cc, fetch(`/data/bounds/${cc}.txt`).then((r) => { if (!r.ok) throw new Error("bounds"); return r.text(); }).then((text) => {
+        for (const line of text.split("\n")) {
+          const [id, kind, box, json] = line.split("\t");
+          if (!json) continue; // "part of" lines carry no shape
+          const area = JSON.parse(json).map((poly) => poly.map((r) => decodeRing(r, 1e-4)));
+          areas.set(id, { kind, box: box.split(",").map(Number), area, path: toPath(area), km2: kmArea(area) });
+        }
+        needDraw = true; kick();
+      }).catch(() => { boundsLoads.delete(cc); }));
+    }
+    return boundsLoads.get(cc);
+  }
+  // the visible part of the world in degrees: [west, south, east, north]
+  const view = () => { const s = s0 * k; return [-tx / s - 180, 84 - (H - ty) / s, (W - tx) / s - 180, 84 + ty / s]; };
+  const boxInView = (b, v) => b[0] <= v[2] && b[2] >= v[0] && b[1] <= v[3] && b[3] >= v[1];
+  const toLonLat = (px, py) => [(px - tx) / (s0 * k) - 180, 84 - (py - ty) / (s0 * k)];
+  function loadVisible() { const v = view(); for (const [cc, x] of Object.entries(boundsIndex)) if (boxInView(x.box, v)) loadBounds(cc); }
+  const countryAt = (lon, lat) => world.find((w) => inBox(lon, lat, w.box) && inArea(lon, lat, w.area)) || null;
+  function cityAtPoint(lon, lat) {
+    for (const [id, a] of areas) if (inBox(lon, lat, a.box) && inArea(lon, lat, a.area)) return byId.get(id) || null;
+    return null;
+  }
+  /** Load every country file whose box holds the point, then find the city there. */
+  async function findCityAt(lon, lat) {
+    await Promise.all(Object.entries(boundsIndex).filter(([, x]) => inBox(lon, lat, x.box)).map(([cc]) => loadBounds(cc)));
+    return cityAtPoint(lon, lat);
+  }
 
   function size() {
     const r = canvas.getBoundingClientRect();
@@ -58,20 +119,18 @@
     tx = W / 2 - wx(lon) * k; ty = H / 2 - wy(lat) * k; clampView();
     needDraw = true; kick();
   }
+  const zoomLabel = () => { canvas.style.touchAction = k > 1.01 ? "none" : "pan-y"; $("#map-zoom-level").textContent = `${k < 10 ? k.toFixed(1) : Math.round(k)}×`; };
   function zoomAt(px, py, factor) {
     const nk = Math.min(MAXK, Math.max(1, k * factor));
     tx = px - (px - tx) * (nk / k); ty = py - (py - ty) * (nk / k); k = nk; clampView();
-    canvas.style.touchAction = k > 1.01 ? "none" : "pan-y";
-    $("#map-zoom-level").textContent = `${k < 10 ? k.toFixed(1) : Math.round(k)}×`;
-    needDraw = true; kick();
+    zoomLabel(); needDraw = true; kick();
   }
-  // Smooth "fly to" a place (used when you pick a city).
+  // Smooth "fly to" a place (used when you pick a city or a country).
   let flight = null;
   function flyTo(lon, lat, targetK, ms = 1100) {
     if (reduced || !onScreen || document.hidden) ms = 0; // off-screen: jump straight there
     const k0 = k, cx0 = (W / 2 - tx) / k, cy0 = (H / 2 - ty) / k;
-    const cx1 = wx(lon), cy1 = wy(lat);
-    flight = { t0: performance.now(), ms, k0, k1: Math.min(MAXK, Math.max(1, targetK)), cx0, cy0, cx1, cy1 };
+    flight = { t0: performance.now(), ms, k0, k1: Math.min(MAXK, Math.max(1, targetK)), cx0, cy0, cx1: wx(lon), cy1: wy(lat) };
     if (!ms) stepFlight(performance.now());
     kick();
   }
@@ -79,61 +138,108 @@
     if (!flight) return;
     const f = flight, t = f.ms ? Math.min(1, (now - f.t0) / f.ms) : 1;
     const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    const kk = Math.exp(Math.log(f.k0) + (Math.log(f.k1) - Math.log(f.k0)) * e);
-    const cx = f.cx0 + (f.cx1 - f.cx0) * e, cy = f.cy0 + (f.cy1 - f.cy0) * e;
-    k = kk; tx = W / 2 - cx * k; ty = H / 2 - cy * k; clampView();
-    canvas.style.touchAction = k > 1.01 ? "none" : "pan-y";
-    $("#map-zoom-level").textContent = `${k < 10 ? k.toFixed(1) : Math.round(k)}×`;
+    k = Math.exp(Math.log(f.k0) + (Math.log(f.k1) - Math.log(f.k0)) * e);
+    tx = W / 2 - (f.cx0 + (f.cx1 - f.cx0) * e) * k; ty = H / 2 - (f.cy0 + (f.cy1 - f.cy0) * e) * k; clampView();
+    zoomLabel();
     if (t >= 1) flight = null;
     needDraw = true;
   }
-  const zoomForCity = (c) => { const r = radiusOf(c); return Math.min(MAXK, (Math.min(W, H) * 0.3) / ((r / 111.32) * s0)); };
+  /** Fly so the box [west, south, east, north] fills most of the map. */
+  function flyToBox(b, minK = 1) {
+    const fit = Math.min(W / Math.max(0.02, (b[2] - b[0]) * s0), H / Math.max(0.02, (b[3] - b[1]) * s0)) * 0.72;
+    flyTo((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, Math.min(MAXK, Math.max(minK, fit)));
+  }
+  function flyToCity(c) {
+    const a = areas.get(c.id);
+    if (a) return flyToBox(a.box, AREA_K + 0.5);
+    const r = radiusOf(c);
+    flyTo(c.lon, c.lat, Math.min(MAXK, Math.max(AREA_K + 0.5, (Math.min(W, H) * 0.3) / ((r / 111.32) * s0))));
+  }
+  function flyToCountry(cc) {
+    const list = cities.filter((c) => c.cc === cc);
+    if (!list.length) return;
+    const lons = list.map((c) => c.lon), lats = list.map((c) => c.lat);
+    flyToBox([Math.min(...lons) - 0.3, Math.min(...lats) - 0.3, Math.max(...lons) + 0.3, Math.max(...lats) + 0.3]);
+  }
 
   // pulse phase per city, so claimed cities don't all breathe in sync
   const phase = (id) => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return (h % 1000) / 1000; };
 
   function draw(now) {
+    const t = now / 1000, s = s0 * k, v = view();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const t = now / 1000;
     // graticule
-    const step = k < 3 ? 30 : k < 12 ? 10 : k < 40 ? 5 : 1;
-    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(149,162,184,.07)";
+    const step = k < 3 ? 30 : k < 12 ? 10 : k < 40 ? 5 : k < 200 ? 1 : 0.25;
+    ctx.lineWidth = 1; ctx.strokeStyle = pal.grid;
     ctx.beginPath();
-    for (let lon = -180; lon <= 180; lon += step) { const x = Math.round(sx(lon)) + 0.5; if (x >= 0 && x <= W) { ctx.moveTo(x, 0); ctx.lineTo(x, H); } }
-    for (let lat = -60; lat <= 84; lat += step) { const y = Math.round(sy(lat)) + 0.5; if (y >= 0 && y <= H) { ctx.moveTo(0, y); ctx.lineTo(W, y); } }
+    for (let lon = Math.ceil(v[0] / step) * step; lon <= v[2]; lon += step) { const x = Math.round(sx(lon)) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, H); }
+    for (let lat = Math.ceil(v[1] / step) * step; lat <= v[3]; lat += step) { const y = Math.round(sy(lat)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
     ctx.stroke();
-    ctx.strokeStyle = "rgba(149,162,184,.14)"; ctx.beginPath(); const eq = Math.round(sy(0)) + 0.5; ctx.moveTo(0, eq); ctx.lineTo(W, eq); ctx.stroke();
 
-    const ppd = pxPerDeg(), m = 60;
+    // land and country borders
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * tx, dpr * ty);
+    ctx.lineJoin = "round";
+    ctx.fillStyle = pal.land;
+    for (const w of world) if (boxInView(w.box, v)) ctx.fill(w.path, "evenodd");
+    ctx.strokeStyle = pal.landLine; ctx.lineWidth = 1 / s;
+    for (const w of world) if (boxInView(w.box, v)) ctx.stroke(w.path);
+    if (hoverCountry && k < AREA_K) {
+      ctx.fillStyle = pal.light ? "rgba(232,67,31,.08)" : "rgba(255,138,91,.1)"; ctx.fill(hoverCountry.path, "evenodd");
+      ctx.strokeStyle = "rgba(255,120,80,.8)"; ctx.lineWidth = 1.5 / s; ctx.stroke(hoverCountry.path);
+    }
+
+    // city areas: coloured by status, every boundary drawn as a clear line on top of the fills
+    if (k >= AREA_K) {
+      loadVisible();
+      ctx.globalAlpha = Math.min(1, 0.35 + (k - AREA_K) / 3);
+      const shown = [];
+      for (const [id, a] of areas) {
+        if (!boxInView(a.box, v)) continue;
+        const c = byId.get(id); if (!c) continue;
+        const cl = claims.get(id), mine = cl && me() && cl.wallet === me();
+        ctx.fillStyle = mine ? "rgba(255,200,87,.24)" : cl ? "rgba(255,90,54,.2)" : c === hover ? pal.hoverFill : pal.area;
+        ctx.fill(a.path, "evenodd");
+        shown.push([a, cl, mine]);
+      }
+      ctx.lineWidth = (k > 80 ? 1.6 : 1.15) / s;
+      for (const [a, cl, mine] of shown) {
+        ctx.strokeStyle = mine ? "rgba(255,200,87,.95)" : cl ? "rgba(255,90,54,.9)" : pal.areaLine;
+        ctx.setLineDash(a.kind === "n" ? [5 / s, 4 / s] : []);
+        ctx.stroke(a.path);
+      }
+      ctx.setLineDash([]);
+      const ha = hover && hover !== selected && areas.get(hover.id);
+      if (ha) { ctx.lineWidth = 2.4 / s; ctx.strokeStyle = pal.label; ctx.stroke(ha.path); }
+      ctx.globalAlpha = 1;
+    }
+    // the selected city's boundary: gold with moving dashes
+    const sa = selected && areas.get(selected.id);
+    if (sa && boxInView(sa.box, v)) {
+      ctx.fillStyle = "rgba(255,200,87,.14)"; ctx.fill(sa.path, "evenodd");
+      ctx.lineWidth = 3 / s; ctx.strokeStyle = "rgba(255,200,87,.95)";
+      if (!reduced) { ctx.setLineDash([8 / s, 6 / s]); ctx.lineDashOffset = (-t * 20) / s; }
+      ctx.stroke(sa.path); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const m = 60;
     const inView = (x, y) => x > -m && x < W + m && y > -m && y < H + m;
     const visible = [];
-    // open cities: soft dots, bigger as you zoom in
-    const zs = Math.min(3.2, Math.pow(k, 0.45));
-    ctx.fillStyle = "rgba(127,163,214,.62)";
+    // open cities: soft dots, bigger as you zoom in (smaller once their areas are showing)
+    const zs = Math.min(3.2, Math.pow(k, 0.45)) * (k >= AREA_K ? 0.55 : 1);
+    ctx.fillStyle = pal.dot;
+    ctx.globalAlpha = 0.7;
     for (const c of cities) {
+      if (parts.has(c.id)) continue;
       const x = sx(c.lon), y = sy(c.lat);
       if (!inView(x, y)) continue;
       visible.push(c);
       if (claims.has(c.id)) continue;
-      const r = Math.max(0.7, (Math.log10(c.pop || 20000) - 3.7) * 0.7) * zs * (W < 600 ? 0.8 : 1);
+      const r = Math.max(0.9, (Math.log10(c.pop || 20000) - 3.7) * 0.7) * zs * (W < 600 ? 0.8 : 1);
       ctx.fillRect(x - r / 2, y - r / 2, r, r);
     }
-    // claim zones = the area that counts as "in the city" (25 km, or 50 km for 1M+ people)
-    if (k >= 4 && visible.length < 900) {
-      for (const c of visible) {
-        const cl = claims.get(c.id), mine = cl && me() && cl.wallet === me(), sel = c === selected;
-        const ry = (radiusOf(c) / 111.32) * ppd, rx = ry / Math.max(0.2, Math.cos((c.lat * Math.PI) / 180));
-        if (rx < 3) continue;
-        ctx.beginPath(); ctx.ellipse(sx(c.lon), sy(c.lat), rx, ry, 0, 0, Math.PI * 2);
-        ctx.fillStyle = mine ? "rgba(255,200,87,.12)" : cl ? "rgba(255,90,54,.10)" : sel ? "rgba(255,200,87,.07)" : "rgba(127,163,214,.035)";
-        ctx.fill();
-        ctx.lineWidth = sel ? 2 : 1;
-        ctx.strokeStyle = mine ? "rgba(255,200,87,.7)" : cl ? "rgba(255,90,54,.55)" : sel ? "rgba(255,200,87,.9)" : "rgba(127,163,214,.22)";
-        if (sel && !reduced) { ctx.setLineDash([7, 6]); ctx.lineDashOffset = -t * 18; }
-        ctx.stroke(); ctx.setLineDash([]);
-      }
-    }
+    ctx.globalAlpha = 1;
     // claimed cities: glowing markers with a slow pulse
     for (const c of visible) {
       const cl = claims.get(c.id); if (!cl) continue;
@@ -150,8 +256,8 @@
     }
     // labels once you zoom in (biggest first, never overlapping)
     if (k >= 2.5) {
-      const boxes = [], maxLabels = W < 600 ? 18 : 42;
-      ctx.font = "600 11px Inter, system-ui, sans-serif"; ctx.textBaseline = "middle";
+      const boxes = [], maxLabels = W < 600 ? 18 : k >= AREA_K ? 70 : 42;
+      ctx.font = "600 11px Inter, system-ui, sans-serif"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
       const order = visible.filter((c) => c !== selected).sort((a, b) => (claims.has(b.id) - claims.has(a.id)) || b.pop - a.pop);
       for (const c of order) {
         if (boxes.length >= maxLabels) break;
@@ -159,13 +265,13 @@
         if (x < 0 || x + w > W || y < 8 || y > H - 8) continue;
         if (boxes.some((b) => x < b[0] + b[2] + 6 && x + w + 6 > b[0] && Math.abs(y - b[1]) < 15)) continue;
         boxes.push([x, y, w]);
-        ctx.fillStyle = "rgba(7,14,25,.75)"; ctx.fillText(c.name, x + 1, y + 1);
-        ctx.fillStyle = claims.has(c.id) ? "#FFB39C" : "rgba(238,242,248,.78)"; ctx.fillText(c.name, x, y);
+        ctx.strokeStyle = pal.halo; ctx.lineWidth = 3; ctx.strokeText(c.name, x, y);
+        ctx.fillStyle = claims.has(c.id) ? pal.claimedText : pal.label; ctx.fillText(c.name, x, y);
       }
     }
     // hover + selected
-    if (hover && hover !== selected) {
-      ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.5;
+    if (hover && hover !== selected && k < AREA_K) {
+      ctx.strokeStyle = pal.label; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(sx(hover.lon), sy(hover.lat), 7, 0, Math.PI * 2); ctx.stroke();
     }
     if (selected && sx(selected.lon) > -20 && sx(selected.lon) < W + 20 && sy(selected.lat) > -20 && sy(selected.lat) < H + 20) {
@@ -177,11 +283,11 @@
       const tk = tickers.get(selected.id), label = tk ? `${selected.name} · $${tk.ticker}` : selected.name;
       ctx.font = "700 12px Inter, system-ui, sans-serif";
       const w = ctx.measureText(label).width + 18, lx = Math.min(W - w - 6, Math.max(6, x - w / 2)), ly = Math.max(6, y - 40);
-      ctx.fillStyle = "rgba(7,14,25,.9)"; ctx.strokeStyle = "rgba(255,200,87,.6)"; ctx.lineWidth = 1;
+      ctx.fillStyle = pal.tagBg; ctx.strokeStyle = "rgba(255,200,87,.7)"; ctx.lineWidth = 1;
       ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(lx, ly, w, 24, 12); else ctx.rect(lx, ly, w, 24); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = "#FFE3A3"; ctx.textBaseline = "middle"; ctx.fillText(label, lx + 9, ly + 12);
+      ctx.fillStyle = pal.tagText; ctx.textBaseline = "middle"; ctx.fillText(label, lx + 9, ly + 12);
     }
-    // ripples (a tap, a fresh claim)
+    // ripples (a tap, a fresh claim, your location)
     for (let i = ripples.length - 1; i >= 0; i--) {
       const r = ripples[i], p = (now - r.t0) / 1300;
       if (p >= 1) { ripples.splice(i, 1); continue; }
@@ -203,6 +309,7 @@
   function nearest(px, py, maxPx = 16) {
     let best = null, bd = maxPx * maxPx;
     for (const c of cities) {
+      if (parts.has(c.id)) continue;
       const x = sx(c.lon), y = sy(c.lat);
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
       const d = (x - px) ** 2 + (y - py) ** 2;
@@ -210,15 +317,44 @@
     }
     return best;
   }
+  /** The city under the pointer: a nearby dot first (small cities stay easy to hit), then the area around it. */
+  function pick(px, py, maxPx) {
+    const c = nearest(px, py, k >= AREA_K ? Math.min(maxPx, 9) : maxPx);
+    if (c || k < AREA_K) return c;
+    const [lon, lat] = toLonLat(px, py);
+    return cityAtPoint(lon, lat);
+  }
+  const areaNote = (a, c) => {
+    if (!a) return "";
+    const plus = c && (members.get(c.id) || []).some((m) => joined.has(m.id)) ? " + nearby towns" : "";
+    return `${a.kind === "r" ? "Official boundary + nearest land" : "Nearest land"}${plus} · ${a.km2 >= 10 ? fmt(a.km2) : a.km2.toFixed(1)} km²`;
+  };
+  // "One coin for Manhattan, Brooklyn, Queens and 38 more listed places"
+  const sharedNote = (c) => {
+    const m = (members.get(c.id) || []).slice().sort((a, b) => b.pop - a.pop);
+    if (!m.length) return "";
+    const names = m.slice(0, 3).map((x) => x.name).join(", ");
+    return m.length > 3 ? `One coin for ${names} and ${m.length - 3} more listed places` : `One coin, including ${names}`;
+  };
   function showTip(c, px, py) {
     if (!c) { tip.hidden = true; return; }
-    const cl = claims.get(c.id), tk = tickers.get(c.id);
+    const cl = claims.get(c.id), tk = tickers.get(c.id), a = areas.get(c.id);
     tip.replaceChildren(el("strong", null, c.name), el("span", null, ` ${placeOf(c)}`), document.createElement("br"),
       el("span", cl ? "tip-claimed" : "tip-open", cl ? `Claimed by ${mask(cl.wallet)}` : "Open"), el("span", "tip-ticker", tk ? `  $${tk.ticker}` : ""));
+    if (a) tip.append(document.createElement("br"), el("span", "tip-area", areaNote(a, c)));
+    const n = (members.get(c.id) || []).length;
+    if (n) tip.append(document.createElement("br"), el("span", "tip-area", `Includes ${n} listed place${n === 1 ? "" : "s"}`));
+    tip.style.left = `${Math.min(W - 10, Math.max(10, px))}px`; tip.style.top = `${py}px`; tip.hidden = false;
+  }
+  const cityCount = (cc) => cities.reduce((n, c) => n + (c.cc === cc && !parts.has(c.id)), 0);
+  function showCountryTip(w, px, py) {
+    const n = cityCount(w.cc);
+    tip.replaceChildren(el("strong", null, countries[w.cc] || w.cc), document.createElement("br"),
+      el("span", "tip-open", n ? `${fmt(n)} ${n === 1 ? "city" : "cities"} · click to zoom in` : "No listed cities yet"));
     tip.style.left = `${Math.min(W - 10, Math.max(10, px))}px`; tip.style.top = `${py}px`; tip.hidden = false;
   }
 
-  // pointer: drag to move, pinch or double-tap to zoom, tap to pick
+  // pointer: drag to move, pinch or double-tap to zoom, tap to pick a city (or a country when zoomed out)
   const pts = new Map();
   let drag = null, lastTap = 0, wheelOK = false;
   const local = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
@@ -247,9 +383,11 @@
       return;
     }
     if (e.pointerType === "mouse") {
-      const c = nearest(x, y);
-      if (c !== hover) { hover = c; needDraw = true; kick(); }
-      showTip(c, x, y - 14);
+      const c = pick(x, y, 16);
+      const w = !c && k < AREA_K ? countryAt(...toLonLat(x, y)) : null;
+      if (c !== hover || w !== hoverCountry) { hover = c; hoverCountry = w; needDraw = true; kick(); }
+      canvas.style.cursor = c || w ? "pointer" : "";
+      if (c) showTip(c, x, y - 14); else if (w) showCountryTip(w, x, y - 14); else tip.hidden = true;
     }
   });
   const end = (e) => {
@@ -261,12 +399,14 @@
     const [x, y] = local(e), now = performance.now();
     if (now - lastTap < 320) { lastTap = 0; flight = null; zoomAt(x, y, 2.4); return; }
     lastTap = now;
-    const c = nearest(x, y, e.pointerType === "mouse" ? 14 : 22);
-    if (c) { select(c, true); ripple(c); }
+    const c = pick(x, y, e.pointerType === "mouse" ? 14 : 22);
+    if (c) { select(c, true); ripple(c); return; }
+    const w = k < AREA_K ? countryAt(...toLonLat(x, y)) : null;
+    if (w && cityCount(w.cc)) { countryEl.value = w.cc; renderList(); flyToCountry(w.cc); hoverCountry = null; tip.hidden = true; }
   };
   canvas.addEventListener("pointerup", end);
   canvas.addEventListener("pointercancel", end);
-  canvas.addEventListener("pointerleave", () => { hover = null; tip.hidden = true; needDraw = true; kick(); });
+  canvas.addEventListener("pointerleave", () => { hover = null; hoverCountry = null; tip.hidden = true; needDraw = true; kick(); });
   wrapEl.addEventListener("mouseleave", () => { wheelOK = false; });
   canvas.addEventListener("wheel", (e) => {
     if (!loaded) return;
@@ -275,9 +415,33 @@
     const [x, y] = local(e);
     zoomAt(x, y, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0022)));
   }, { passive: false });
+  // keyboard: arrows move, + / − zoom (the map is focusable)
+  canvas.addEventListener("focus", () => { wheelOK = true; });
+  canvas.addEventListener("keydown", (e) => {
+    if (!loaded) return;
+    const pan = { ArrowLeft: [80, 0], ArrowRight: [-80, 0], ArrowUp: [0, 80], ArrowDown: [0, -80] }[e.key];
+    if (pan) { e.preventDefault(); flight = null; tx += pan[0]; ty += pan[1]; clampView(); needDraw = true; kick(); }
+    else if (e.key === "+" || e.key === "=") { e.preventDefault(); flight = null; zoomAt(W / 2, H / 2, 1.6); }
+    else if (e.key === "-" || e.key === "_") { e.preventDefault(); flight = null; zoomAt(W / 2, H / 2, 1 / 1.6); }
+  });
   $("#map-in").addEventListener("click", () => { flight = null; zoomAt(W / 2, H / 2, 1.8); });
   $("#map-out").addEventListener("click", () => { flight = null; zoomAt(W / 2, H / 2, 1 / 1.8); });
   $("#map-reset").addEventListener("click", () => flyTo(10, 12, 1, 800));
+  // ◎: find the city you're standing in (location is used on this device only, never sent)
+  $("#map-locate").addEventListener("click", async () => {
+    const b = $("#map-locate");
+    if (!loaded || b.disabled) return;
+    b.disabled = true; b.classList.add("is-busy");
+    try {
+      const loc = await getLocation();
+      ripples.push({ lon: loc.lon, lat: loc.lat, t0: performance.now(), col: "55,194,154" });
+      const c = await findCityAt(loc.lon, loc.lat);
+      const home = c && parts.has(c.id) ? byId.get(parts.get(c.id)) : c;
+      if (home) { select(home, true); V().toast?.(`📍 You're in ${home.name}`); }
+      else { flyTo(loc.lon, loc.lat, 60); V().toast?.("You're not inside a listed city yet. You can add yours below the map."); }
+    } catch (e) { V().toast?.(e?.message || "Couldn't get your location."); }
+    finally { b.disabled = false; b.classList.remove("is-busy"); }
+  });
   window.addEventListener("resize", () => { if (loaded) size(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { needDraw = true; kick(); } });
   new IntersectionObserver((es) => { onScreen = es.some((x) => x.isIntersecting); if (onScreen) { needDraw = true; kick(); } }).observe(canvas);
@@ -301,22 +465,15 @@
       const tk = tickers.get(c.id);
       const nm = el("span", "city-row__name");
       nm.append(el("strong", null, c.name), el("span", null, `${placeOf(c)}${c.pop ? " · " + fmt(c.pop) : ""}${c.added ? " · community-added" : ""}${tk ? " · $" + tk.ticker : ""}`));
-      const cl = claims.get(c.id), mine = cl && me() && cl.wallet === me();
-      b.append(nm, el("span", mine ? "tag tag--warn" : cl ? "tag tag--no" : "tag tag--ok", mine ? "Yours" : cl ? "Claimed" : "Open"));
+      const cl = claims.get(c.id), mine = cl && me() && cl.wallet === me(), parent = parts.has(c.id) && byId.get(parts.get(c.id));
+      b.append(nm, parent ? el("span", "tag", `Part of ${parent.name}`)
+        : el("span", mine ? "tag tag--warn" : cl ? "tag tag--no" : "tag tag--ok", mine ? "Yours" : cl ? "Claimed" : "Open"));
       b.addEventListener("click", () => select(c, true));
       li.append(b); return li;
     }));
   }
   let typing; qEl.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(renderList, 120); });
-  countryEl.addEventListener("change", () => {
-    renderList();
-    const list = cities.filter((c) => c.cc === countryEl.value);
-    if (!list.length) return;
-    const lons = list.map((c) => c.lon), lats = list.map((c) => c.lat);
-    const [a, b, c2, d] = [Math.min(...lons), Math.max(...lons), Math.min(...lats), Math.max(...lats)];
-    const fit = Math.min(W / Math.max(0.5, (b - a) * s0), H / Math.max(0.5, (d - c2) * s0)) * 0.8;
-    flyTo((a + b) / 2, (c2 + d) / 2, Math.min(60, Math.max(1, fit)));
-  });
+  countryEl.addEventListener("change", () => { renderList(); if (countryEl.value) flyToCountry(countryEl.value); });
   filterEl.addEventListener("change", renderList);
 
   /* =================== coin preview + moderator =================== */
@@ -381,6 +538,10 @@
       $("#claim-kicker").textContent = cl ? "Claimed" : "Open city";
       $("#claim-title").textContent = selected.name;
       sub.textContent = `${placeOf(selected)}${selected.pop ? " · " + fmt(selected.pop) + " people" : ""}`;
+      const a = areas.get(selected.id);
+      if (a) sub.append(document.createElement("br"), el("span", a.kind === "r" ? "area-note" : "area-note area-note--near", areaNote(a, selected)));
+      const shared = sharedNote(selected);
+      if (shared) sub.append(document.createElement("br"), el("span", "shared-note", shared));
       if (cl) sub.append(document.createElement("br"), document.createTextNode("Founder: "), solscan(cl.wallet), document.createTextNode(` · since ${new Date(cl.claimed_at).toLocaleDateString()}`));
     }
     let label = "Pick a city first", disabled = true;
@@ -393,10 +554,18 @@
     btn.textContent = label; btn.disabled = disabled || busy;
   }
   function select(c, fly = false) {
+    // a neighbourhood inside another city's official boundary belongs to that city
+    if (parts.has(c.id) && byId.get(parts.get(c.id))) {
+      const home = byId.get(parts.get(c.id));
+      V().toast?.(`${c.name} is part of ${home.name}`);
+      c = home;
+    }
     mode = "claim"; selected = c;
-    req("here", null, "Share your location once. We check you're inside the city (25 km, or 50 km for cities over 1M people) and that your internet connection is local too. VPNs are blocked. Nothing is saved.");
+    req("here", null, "Share your location once. We check you're inside the city's boundary on the map and that your internet connection is local too. VPNs are blocked. Nothing is saved.");
     refreshPanel(); renderList(); renderCoin(c); renderModerator(c);
-    if (fly) flyTo(c.lon, c.lat, zoomForCity(c));
+    if (fly) flyToCity(c);
+    // the boundary may still be loading: show it (and re-frame the map) once it's here
+    if (!areas.has(c.id)) loadBounds(c.cc).then(() => { if (selected !== c) return; refreshPanel(true); if (fly && areas.has(c.id)) flyToCity(c); });
     needDraw = true; kick();
   }
   $("#city-add-open").addEventListener("click", () => {
@@ -422,7 +591,9 @@
   const ERR = {
     not_launched: () => "Claims open the moment $VICINITY launches.",
     not_enough_tokens: (d) => `This wallet holds ${fmt(d.amount || 0)} $VICINITY. You need ${fmt(MIN_HOLD)} to claim a city.`,
-    not_in_city: (d) => `You're about ${d.km} km from the city center. You need to be within ${d.radiusKm} km.`,
+    not_in_city: (d) => (d.km != null ? `You're about ${d.km} km from the city center. You need to be within ${d.radiusKm} km.` : "You're not inside this city's boundary right now."),
+    part_of: (d) => `This place is part of ${byId.get(d.parentId)?.name || "a bigger city"}. Claim that city instead.`,
+    inside_listed_city: (d) => `You're inside ${byId.get(d.cityId)?.name || "a listed city"}. Claim it instead of adding a new one.`,
     vpn_detected: () => "It looks like you're on a VPN, proxy or cloud network. Turn it off and use your normal home or mobile internet, then try again.",
     network_mismatch: (d) => d.networkCountry ? `Your internet connection is in a different country (${d.networkCountry}). Turn off any VPN and try again from the city.` : `Your internet connection looks about ${fmt(d.networkKm)} km away from your GPS location. Turn off any VPN and try again.`,
     city_taken: () => "Someone else already claimed this city.",
@@ -454,11 +625,21 @@
     try {
       btn.textContent = "Getting your location…";
       const loc = await getLocation();
+      // the same boundary check the server does, so people see the answer before signing anything
+      const here = await findCityAt(loc.lon, loc.lat);
+      const hereCity = here && parts.has(here.id) ? byId.get(parts.get(here.id)) : here;
       if (mode === "claim") {
-        const d = kmBetween(loc.lat, loc.lon, selected.lat, selected.lon), rad = radiusOf(selected);
-        if (d > rad) { req("here", "bad", `You're about ${Math.round(d)} km from ${selected.name}. You need to be within ${rad} km.`); throw new Error(`You're about ${Math.round(d)} km away. Claim the city you're in right now.`); }
+        await loadBounds(selected.cc);
+        const a = areas.get(selected.id);
+        if (a ? !inArea(loc.lon, loc.lat, a.area) : kmBetween(loc.lat, loc.lon, selected.lat, selected.lon) > radiusOf(selected)) {
+          req("here", "bad", hereCity ? `You're in ${hereCity.name}, not ${selected.name}.` : `You're outside ${selected.name}'s boundary.`);
+          throw new Error(hereCity ? `You're in ${hereCity.name} right now. You can only claim the city you're standing in.` : `You're not inside ${selected.name} right now. Tap ◎ on the map to find the city you're in.`);
+        }
         req("here", "ok", `You're in ${selected.name} ✓ (location not saved)`);
-      } else req("here", "ok", "Location checked ✓ (not saved)");
+      } else {
+        if (hereCity) { select(hereCity, true); throw new Error(`You're inside ${hereCity.name}, which is already on the map. Claim it instead of adding a new city.`); }
+        req("here", "ok", "Location checked ✓ (not saved)");
+      }
       btn.textContent = "Check your wallet…";
       const m = await (await fetch(`/api/message?address=${encodeURIComponent(addr)}&${target}`, { cache: "no-store" })).json();
       if (!m.message) throw new Error("Couldn't prepare the message. Please try again.");
@@ -501,7 +682,7 @@
 
   /* =================== live claims feed + stats =================== */
   function updateStats() {
-    $("#cs-cities").textContent = fmt(cities.length);
+    $("#cs-cities").textContent = fmt(cities.length - parts.size);
     $("#cs-countries").textContent = fmt(new Set(cities.map((c) => c.cc)).size);
     $("#cs-claimed").textContent = fmt(claims.size);
     $("#cs-status").textContent = open ? "Open" : "At launch";
@@ -519,7 +700,8 @@
       return li;
     }));
   }
-  function retick() { tickers = window.vicinityTicker ? window.vicinityTicker.assign(cities) : new Map(); }
+  // neighbourhoods that are part of another city don't get a coin of their own
+  function retick() { tickers = window.vicinityTicker ? window.vicinityTicker.assign(cities.filter((c) => !parts.has(c.id))) : new Map(); }
 
   let firstClaims = true;
   async function refreshClaims() {
@@ -542,20 +724,29 @@
   async function load() {
     if (loaded) return; loaded = true;
     try {
-      const [data, off] = await Promise.all([
+      const [data, off, wd, bi] = await Promise.all([
         fetch("/data/cities.json").then((r) => r.json()),
         fetch("/api/official", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+        fetch("/data/world.json").then((r) => r.json()).catch(() => null),        // map background (optional)
+        fetch("/data/bounds/index.json").then((r) => r.json()).catch(() => null), // city boundaries (optional)
       ]);
       countries = data.countries; admin = data.admin;
+      readPalette();
+      world = wd ? Object.entries(wd.countries).map(([cc, enc]) => { const area = enc.map((poly) => poly.map((r) => decodeRing(r, wd.unit))); return { cc, area, box: boxOf(area), path: toPath(area) }; }) : [];
+      boundsIndex = bi?.countries || {};
+      parts = new Map(Object.entries(bi?.parts || {}));
+      joined = new Set(bi?.joined || []);
       cities = Object.entries(data.byCountry).flatMap(([cc, rows]) => rows.map(([id, name, adm, lat, lon, pop]) => ({ id: String(id), name, cc, adm, lat, lon, pop, n: norm(name) })));
       cities.sort((a, b) => b.pop - a.pop);
       byId = new Map(cities.map((c) => [c.id, c]));
+      members = new Map();
+      for (const [child, parent] of parts) if (byId.has(child)) members.set(parent, [...(members.get(parent) || []), byId.get(child)]);
       retick();
       await refreshClaims();
       retick();
       const handle = (off.socials || []).find((h) => /^@[A-Za-z0-9_]{1,15}$/.test(h));
       if (handle) { followHandle = handle; $("#req-follow").hidden = false; $("#follow-link").href = `https://x.com/${handle.slice(1)}`; $("#follow-link").textContent = `Follow ${handle} ↗`; }
-      const counts = {}; for (const c of cities) counts[c.cc] = (counts[c.cc] || 0) + 1;
+      const counts = {}; for (const c of cities) if (!parts.has(c.id)) counts[c.cc] = (counts[c.cc] || 0) + 1;
       const opts = Object.keys(countries).sort((a, b) => countries[a].localeCompare(countries[b]));
       countryEl.append(...opts.filter((c) => counts[c]).map((c) => Object.assign(document.createElement("option"), { value: c, textContent: `${countries[c]} (${counts[c]})` })));
       $("#add-country").append(Object.assign(document.createElement("option"), { value: "", textContent: "Choose a country" }),

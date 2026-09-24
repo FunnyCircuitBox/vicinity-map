@@ -21,7 +21,8 @@
 import { OFFICIAL, VICINITY_MINT, checkOfficial } from "./official.js";
 import { getHolding, getHoldings, getTokenFacts, getTopHolders } from "./chain.js";
 import { base58Encode, buildMessage, CITY_NAME_RE, isSolanaAddress, parseMessage, statementFor, verifySignature } from "./solana.js";
-import { BIG_CITY_RADIUS_KM, CLAIM_MIN_HOLD, CLAIM_RADIUS_KM, MAX_LOCATION_ACCURACY_M, cleanLocation, countryCities, distanceKm, normName, radiusFor } from "./cities.js";
+import { BIG_CITY_RADIUS_KM, CLAIM_MIN_HOLD, CLAIM_RADIUS_KM, MAX_LOCATION_ACCURACY_M, cleanLocation, countryBounds, countryCities, distanceKm, normName, radiusFor } from "./cities.js";
+import { cityAt, findCityArea, inArea } from "./geo.js";
 import { d1Store } from "./store.js";
 import { networkCheck } from "./network.js";
 
@@ -140,7 +141,7 @@ export const storeFor = (env) => env.store || d1Store(env.DB);
 /**
  * Claim a city (or add a missing one and claim it).
  * Body: { address, message, signature, location: { lat, lon, accuracy } }
- * The location is used for the distance check only and is never saved.
+ * The location is used for the "inside the city" check only and is never saved.
  */
 export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl = fetch, cf = request.cf) {
   const r = await readSigned(request, now, ["claim", "add"], "claimed");
@@ -162,6 +163,8 @@ export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl
   let listed;
   try { listed = await countryCities(env, parsed.country); } catch { return no("cities_unavailable", 503); }
   if (!listed) return no("unknown_country");
+  let bounds = null; // city boundaries are optional: without them the distance rule applies
+  try { bounds = await countryBounds(env, parsed.country); } catch { /* fall back to distance */ }
 
   // Which city, and is the visitor inside it?
   let city;
@@ -178,12 +181,23 @@ export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl
     const added = (await store.addedByName(parsed.country, norm)).find((c) => distanceKm(loc.lat, loc.lon, c.lat, c.lon) <= 60);
     const dup = same || (added && { id: "c" + added.id, name: added.name });
     if (dup) return no("already_listed", 409, { cityId: String(dup.id), cityName: dup.name });
+    // standing inside a listed city's boundary? then that city is the one to claim
+    const inside = bounds && cityAt(bounds, loc.lon, loc.lat);
+    if (inside) return no("inside_listed_city", 409, { cityId: inside, cityName: listed.find((c) => c.id === inside)?.name });
     // New city center = the visitor's spot rounded to about 10 km, so no home location is revealed.
     city = { id: null, name: parsed.name, country: parsed.country, lat: Math.round(loc.lat * 10) / 10, lon: Math.round(loc.lon * 10) / 10, pop: 0 };
   }
 
-  const dist = distanceKm(loc.lat, loc.lon, city.lat, city.lon);
-  if (city.id && dist > radiusFor(city)) return no("not_in_city", 403, { km: Math.round(dist), radiusKm: radiusFor(city) });
+  if (city.id) {
+    const row = bounds && !city.id.startsWith("c") ? findCityArea(bounds, city.id) : null;
+    if (row?.kind === "p") return no("part_of", 409, { parentId: row.parent });
+    if (row?.area) {
+      if (!inArea(loc.lon, loc.lat, row.area)) return no("not_in_city", 403);
+    } else {
+      const dist = distanceKm(loc.lat, loc.lon, city.lat, city.lon);
+      if (dist > radiusFor(city)) return no("not_in_city", 403, { km: Math.round(dist), radiusKm: radiusFor(city) });
+    }
+  }
 
   // Does the internet connection agree with the GPS? (blocks VPNs, proxies and far-away spoofing)
   const net = networkCheck(cf, loc, city.country);
