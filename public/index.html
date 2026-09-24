@@ -375,9 +375,22 @@
         </div>
 
         <div class="citymap card-glass reveal">
-          <canvas id="city-canvas" width="1200" height="480" role="img" aria-label="World map of every listed city. Orange dots are claimed cities."></canvas>
-          <p class="citymap__tip" id="city-tip" hidden></p>
-          <p class="citymap__legend"><span><span class="dot dot--open"></span> Open</span><span><span class="dot dot--claimed"></span> Claimed</span><span><span class="dot dot--mine"></span> Yours</span><span>Tap a dot to pick that city</span></p>
+          <div class="citymap__stage">
+            <canvas id="city-canvas" width="1200" height="480" role="img" aria-label="Zoomable world map of every listed city. Orange dots are claimed cities; circles show each city's claim zone."></canvas>
+            <p class="citymap__tip" id="city-tip" hidden></p>
+            <div class="map-ctrl" role="group" aria-label="Map zoom">
+              <button type="button" id="map-in" aria-label="Zoom in">+</button>
+              <button type="button" id="map-out" aria-label="Zoom out">−</button>
+              <button type="button" id="map-reset" aria-label="Show the whole world">⟲</button>
+              <span id="map-zoom-level" aria-live="polite">1.0×</span>
+            </div>
+            <p class="map-hint" id="map-hint">Click the map first, then scroll to zoom (or use + and −)</p>
+          </div>
+          <p class="citymap__legend"><span><span class="dot dot--open"></span> Open</span><span><span class="dot dot--claimed"></span> Claimed</span><span><span class="dot dot--mine"></span> Yours</span><span><span class="dot dot--zone"></span> Claim zone: 25 km, or 50 km for cities over 1M people</span><span class="citymap__how">Drag to move · scroll, pinch or double-tap to zoom · tap a city</span></p>
+          <div class="claim-feed-wrap">
+            <p class="kicker kicker--live"><span class="live-dot" aria-hidden="true"></span>Latest claims · live</p>
+            <ul class="claim-feed" id="claim-feed" aria-live="polite"><li class="claim-feed__empty">Loading…</li></ul>
+          </div>
         </div>
 
         <div class="citybox">
@@ -400,6 +413,19 @@
             <h3 id="claim-title">Search or tap the map</h3>
             <p class="muted small" id="claim-sub">Choose the city you live in. You can only claim one, so choose well.</p>
 
+            <div class="coin-preview" id="coin-preview" hidden>
+              <div class="coin-disc" id="coin-disc" aria-hidden="true"><span id="coin-face">UTI</span></div>
+              <div class="coin-preview__text">
+                <p class="coin-preview__label">City coin preview</p>
+                <strong id="coin-ticker">$UTICA</strong>
+                <span id="coin-name">Utica Coin</span>
+                <span class="tiny muted" id="coin-where"></span>
+              </div>
+              <p class="tiny muted coin-preview__note">Sample only. City coins launch on the Vicinity Launchpad; nothing is minted yet.</p>
+              <p class="tiny coin-same" id="coin-same" hidden></p>
+            </div>
+            <p class="mod-row small" id="mod-row" hidden></p>
+
             <form id="add-form" class="add-form" hidden novalidate>
               <label for="add-name">City name</label>
               <input id="add-name" type="text" maxlength="60" autocomplete="off" placeholder="e.g. New Hartford">
@@ -411,7 +437,7 @@
             <ol class="reqs" id="claim-reqs">
               <li data-req="wallet"><span class="req__dot"></span><div><strong>Connect your wallet</strong><p class="tiny muted" id="req-wallet-text">Any Solana wallet. <a href="#wallet">Connect here</a>.</p></div></li>
               <li data-req="hold"><span class="req__dot"></span><div><strong>Hold 1,000,000+ $VICINITY</strong><p class="tiny muted">Checked live on the blockchain when you claim. Keep holding: claims are re-checked at the Launchpad snapshot.</p></div></li>
-              <li data-req="here"><span class="req__dot"></span><div><strong>Be in the city</strong><p class="tiny muted" id="req-here-text">Share your location once. We only check you're inside the city (25 km, or 50 km for cities over 1M people) and never save it.</p></div></li>
+              <li data-req="here"><span class="req__dot"></span><div><strong>Be in the city</strong><p class="tiny muted" id="req-here-text">Share your location once. We check you're inside the city (25 km, or 50 km for cities over 1M people) and that your internet connection is local too. VPNs are blocked. We never save it.</p></div></li>
               <li data-req="follow" id="req-follow" hidden><span class="req__dot"></span><div><strong>Follow Vicinity on X</strong><p class="tiny muted"><a id="follow-link" href="#" target="_blank" rel="noopener">Open X ↗</a> <label class="inline-check"><input type="checkbox" id="follow-ok"> I followed</label></p></div></li>
               <li data-req="sign"><span class="req__dot"></span><div><strong>Sign one message</strong><p class="tiny muted">Free, not a transaction, can't move funds.</p></div></li>
             </ol>
@@ -483,6 +509,9 @@
         <details class="reveal"><summary>Is verifying my wallet safe?</summary><p>Yes. You only sign a plain message, which can't move funds, and verifying doesn't save your address.</p></details>
         <details class="reveal"><summary>How do I claim my city?</summary><p>Hold at least 1,000,000 $VICINITY, be in the city, and sign one free message. One wallet can claim one city, and each city has one founder. Claiming costs nothing.</p></details>
         <details class="reveal"><summary>What does a City Founder get?</summary><p>Your wallet shown as the founder on the city page, and first right to launch your city's coin when the Vicinity Launchpad opens. Claims are re-checked at the Launchpad snapshot, so keep holding 1,000,000+ $VICINITY.</p></details>
+        <details class="reveal"><summary>Two cities have the same name. Which one do I get?</summary><p>The one you pick. Every city has its own ID number, and the ID is what gets claimed, never just the name. Search results show the state and country so you can tell them apart. For city coins, the biggest city with a name keeps the plain ticker (London, UK is $LONDON) and the others add their country or state code (London, Canada is $LONDONCA).</p></details>
+        <details class="reveal"><summary>Can someone use a VPN or fake GPS to claim another city?</summary><p>We make it hard. Your phone's GPS must be inside the city, and your internet connection must be in the same country and nearby. VPNs, proxies, cloud servers and Tor are blocked. No online check is perfect, so country moderators can flag suspicious claims, and every founder is re-checked at the Launchpad snapshot.</p></details>
+        <details class="reveal"><summary>Who moderates a country's city coins?</summary><p>The city founder in that country who holds the most $VICINITY, checked live on the blockchain. Team wallets can't be moderators. The final moderator is fixed at the Launchpad snapshot.</p></details>
         <details class="reveal"><summary>My city isn't listed. What now?</summary><p>Use "Add it" in the city search. You need to be there, and the new city is claimed by you.</p></details>
         <details class="reveal"><summary>What location data do you keep?</summary><p>None from you. Your location is used once to check you're inside the city, then thrown away. A city you add gets a center point rounded to about 10 km.</p></details>
       </div></div>
@@ -500,5 +529,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <script src="/app.js" defer></script>
+  <script src="/ticker.js" defer></script>
+  <script src="/cities.js" defer></script>
 </body>
 </html>
