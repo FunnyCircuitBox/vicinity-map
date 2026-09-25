@@ -32,6 +32,17 @@ export function robust(op, a, b) {
   return null;
 }
 
+/**
+ * Rounding can make a shape's outline cross itself (Ganshui, China), and then no cut against it works.
+ * Such a shape is rebuilt as a clean union of itself (shifted by a hair if needed); fine shapes are
+ * returned unchanged, the same object.
+ */
+export function repair(area) {
+  try { pc.union(area); return area; } catch { /* broken: rebuild it */ }
+  for (const e of [1e-9, -1e-9, 1e-8]) { try { return pc.union(shift(area, e)); } catch { /* next */ } }
+  return area;
+}
+
 export const pairKey = (a, b) => (a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`);
 
 /** Exact shared area in km² (0 if none; null if the geometry library couldn't compute it). */
@@ -118,7 +129,10 @@ export function removeOverlaps(items, minKm2 = 0.001, flip = new Set()) {
       let [keep, lose] = a.kind !== b.kind ? (a.kind === "r" ? [a, b] : [b, a]) : kmArea(a.area) <= kmArea(b.area) ? [a, b] : [b, a];
       // a pair that keeps coming back after rounding: cut the shared bit from the other side instead
       if (flip.has(pairKey(a, b))) [keep, lose] = [lose, keep];
-      const rest = robust("difference", lose.area, keep.area);
+      let rest = robust("difference", lose.area, keep.area);
+      // the geometry library can fail one way and not the other (Zhuji − Hangzhou fails,
+      // Hangzhou − Zhuji works): then cut the shared bit from the other side
+      if (!rest) { [keep, lose] = [lose, keep]; rest = robust("difference", lose.area, keep.area); }
       if (!rest) { failed.push(`${lose.id} vs ${keep.id}`); continue; }
       lose.area = rest.filter((poly) => kmArea([poly]) > 0.0001);
       lose.box = lose.area.length ? bboxOf(lose.area) : [0, 0, 0, 0];

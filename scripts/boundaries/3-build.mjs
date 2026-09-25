@@ -21,7 +21,7 @@ import pc from "polygon-clipping";
 import { Delaunay } from "d3-delaunay";
 import { encodeArea, inArea } from "../../src/geo.js";
 import { simplify } from "./simplify.mjs";
-import { findOverlaps, pairKey, removeOverlaps, weld } from "./overlaps.mjs";
+import { findOverlaps, pairKey, removeOverlaps, repair, robust, sharedKm2, weld } from "./overlaps.mjs";
 import { distanceKm, radiusFor } from "../../src/cities.js";
 
 const CACHE = ".cache/boundaries";
@@ -160,6 +160,14 @@ for (const cc of Object.keys(data.byCountry)) {
 if (tooDense) console.log(`${tooDense} cities matched only boundaries far too small for their population (they use nearest areas)`);
 if (missing.length) console.warn(`no shapes yet for ${missing.length} countries (their cities use nearest areas): ${missing.join(" ")}`);
 const real = [...relOwner.values()].map(({ city, area }) => ((city.real = area), (city.rbox = bboxOf(area)), city));
+
+// Very large official boundaries (Chinese prefecture cities, Beijing's 16,000 km²) don't need 45 m
+// detail: simplify them to ≈ 150 m (over 1,000 km²) to keep files small. Not coarser: 300 m made Hangzhou's
+// border a few long straight lines that cut back and forth across Zhuji's, and the overlap never settled.
+for (const c of real) {
+  const km2 = kmArea(c.real), tol = km2 > 1_000 ? 0.0015 : 0;
+  if (tol) { c.real = c.real.map((poly) => poly.map((ring) => simplify(ring, tol))); c.rbox = bboxOf(c.real); }
+}
 
 // Some official boundaries include a lot of sea (Ho Chi Minh City's reaches out to Côn Đảo island:
 // 36,000 km², of which 6,400 km² is land). When more than a third of a boundary is water, keep the land.
@@ -445,7 +453,14 @@ const snap = (area) => area
   .filter((poly) => poly[0].length >= 4)
   .map((poly) => poly.filter((ring) => ring.length >= 4));
 const withArea = cities.filter((c) => c.area?.length && c.kind !== "p");
+// rounding can make an outline cross itself: rebuild those shapes cleanly (and round again)
+const repairAll = (items) => {
+  let n = 0;
+  for (const c of items) { if (!c.area.length) continue; const fixed = repair(c.area); if (fixed !== c.area) { c.area = snap(fixed); c.box = bboxOf(c.area); n++; } }
+  return n;
+};
 for (const c of withArea) { c.area = snap(c.area); c.box = bboxOf(c.area); }
+console.log(`${repairAll(withArea)} self-crossing shapes rebuilt`);
 // Cutting leaves a few vertices between grid points (where two borders cross). Rounding one of those
 // tilts a long shared border and makes a thin wedge of overlap (Kiel × Neumünster: 37 km long,
 // 0.06 km²). So each off-grid vertex goes to the nearest grid point that is outside every neighbour.
@@ -476,8 +491,10 @@ function snapToFreeGrid(items) {
       const cands = [[fx, fy], [fx + 1, fy], [fx, fy + 1], [fx + 1, fy + 1]].map(([a, b]) => [a / 1e4, b / 1e4])
         .sort((p, q) => Math.hypot(p[0] - x, p[1] - y) - Math.hypot(q[0] - x, q[1] - y));
       // the point, and the middle of both edges it touches, must stay out of every neighbour
-      const ok = (p) => !others.some((o) => [p, [(p[0] + prev[0]) / 2, (p[1] + prev[1]) / 2], [(p[0] + next[0]) / 2, (p[1] + next[1]) / 2]]
-        .some(([a, b]) => strictlyIn(a, b, o)));
+      // the point, and points all along both edges it touches (a long edge can cross into a wiggly
+      // neighbour away from its middle: Hangzhou × Zhuji), must stay out of every neighbour
+      const along = (p, q) => [1, 2, 3, 4, 5, 6, 7].map((f) => [p[0] + ((q[0] - p[0]) * f) / 8, p[1] + ((q[1] - p[1]) * f) / 8]);
+      const ok = (p) => !others.some((o) => [p, ...along(p, prev), ...along(p, next)].some(([a, b]) => strictlyIn(a, b, o)));
       const pick = cands.find(ok);
       ring[i] = pick ?? [NaN, NaN]; // no safe grid point: drop this corner (a hairline gap, never an overlap)
       moved++;
@@ -498,6 +515,7 @@ for (let round = 1; round <= 8; round++) {
   const live = withArea.filter((c) => c.area.length);
   const { removed, failed } = removeOverlaps(live, MIN_OVERLAP_KM2, flip);
   const moved = snapToFreeGrid(live);
+  repairAll(live);
   const left = findOverlaps(live.filter((c) => c.area.length), MIN_OVERLAP_KM2);
   // Two versions of one long border that start at slightly different corners leave a hair-thin sliver
   // no rounding can fix: weld them (put the corner into the neighbour's edge) and check again.
@@ -507,6 +525,30 @@ for (let round = 1; round <= 8; round++) {
   console.log(`overlap round ${round}: ${removed} removed, ${moved} border crossings snapped, ${welded} corners welded, ${still.length} left${failed.length ? `, couldn't cut ${failed.length}` : ""}`);
   if (!still.length) break;
   for (const { a, b } of still) { const k = pairKey(a, b), n = (seenPairs.get(k) || 0) + 1; seenPairs.set(k, n); if (n >= 2) flip.add(k); }
+}
+// Last resort for a pair whose sliver comes back after every rounding (Hangzhou × Zhuji): cut a small
+// box, lined up with the rounding grid and ≈ 30 m wider than the sliver, out of the bigger area.
+// Rounding can't reach back across that margin; it leaves a hairline gap, never an overlap.
+{
+  const g = 1e-4, m = 3e-4, down = (v) => Math.round(Math.floor(v / g) * g * 1e4) / 1e4 - m, up = (v) => Math.round(Math.ceil(v / g) * g * 1e4) / 1e4 + m;
+  let notched = 0;
+  for (const { a, b } of findOverlaps(withArea.filter((c) => c.area.length), MIN_OVERLAP_KM2)) {
+    const shared = robust("intersection", a.area, b.area);
+    if (!shared?.length) continue;
+    const lose = a.kind !== b.kind ? (a.kind === "r" ? b : a) : kmArea(a.area) >= kmArea(b.area) ? a : b;
+    const [x0, y0, x1, y1] = bboxOf(shared);
+    const box = [[[[down(x0), down(y0)], [up(x1), down(y0)], [up(x1), up(y1)], [down(x0), up(y1)], [down(x0), down(y0)]]]];
+    const rest = robust("difference", lose.area, box);
+    if (!rest?.length) continue;
+    // keep the cut only if it really shrinks the overlap
+    const before = sharedKm2(a.area, b.area), old = [lose.area, lose.box];
+    lose.area = snap(rest); lose.box = bboxOf(lose.area);
+    const after = sharedKm2(a.area, b.area);
+    if (after === null || (before !== null && after >= before)) [lose.area, lose.box] = old;
+    else notched++;
+  }
+  const left = findOverlaps(withArea.filter((c) => c.area.length), MIN_OVERLAP_KM2);
+  if (notched || left.length) console.log(`last resort: ${notched} stubborn slivers cut out with a small margin, ${left.length} left`);
 }
 // a city whose whole area went to a neighbour shares that neighbour's coin
 for (const c of withArea) {
