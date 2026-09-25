@@ -50,11 +50,13 @@ export const encodeArea = (area) => area.map((poly) => poly.map(encodeRing));
  *   "<id>\tr\t<minLon,minLat,maxLon,maxLat>\t<encoded area JSON>"  real (OpenStreetMap) boundary
  *   "<id>\tn\t<box>\t<encoded area JSON>"                          leftover land nearest the city
  *   "<id>\tp\t<parent id>"                                          part of another city (a neighbourhood)
+ *   "<id>\to\t-"                                                    outside every community (empty land)
  * Only the lines that matter are parsed, so checks stay cheap in the Worker.
  */
 function parseLine(line) {
   const [id, kind, a, json] = line.split("\t");
   if (kind === "p") return { id, kind, parent: a };
+  if (kind === "o") return { id, kind }; // outside every community (empty land)
   return { id, kind, box: a.split(",").map(Number), json };
 }
 
@@ -73,7 +75,7 @@ export function cityAt(text, lon, lat) {
   for (const line of text.split("\n")) {
     if (!line) continue;
     const row = parseLine(line);
-    if (row.kind === "p") continue;
+    if (row.kind === "p" || row.kind === "o") continue;
     const [a, b, c, d] = row.box;
     if (lon < a || lon > c || lat < b || lat > d) continue;
     if (inArea(lon, lat, decodeArea(JSON.parse(row.json)))) return row.id;

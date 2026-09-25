@@ -92,8 +92,9 @@ test("generated boundary files: every line is a listed city with a valid shape, 
     for (const l of readFileSync(new URL(file, dir), "utf8").split("\n").filter(Boolean)) {
       const [id, kind, a] = l.split("\t");
       assert.ok(listed.has(id), `${cc}: ${id} is listed`);
-      assert.ok(["r", "n", "p"].includes(kind), `${cc}: ${id} kind`);
+      assert.ok(["r", "n", "p", "o"].includes(kind), `${cc}: ${id} kind`);
       if (kind === "p") { assert.ok(listed.has(a), `${cc}: parent of ${id}`); continue; }
+      if (kind === "o") continue; // outside every community: no shape
       const row = findCityArea(l, id);
       assert.ok(row.area.length && row.area.every((poly) => poly.every((ring) => ring.length >= 4)), `${cc}: ${id} shape`);
     }
@@ -126,7 +127,7 @@ test("generated boundary files: areas never overlap (no city's point is inside t
   for (const [cc, rows] of Object.entries(data.byCountry)) {
     const file = new URL(`${cc}.txt`, dir);
     if (!existsSync(file)) continue;
-    const areas = readFileSync(file, "utf8").split("\n").filter((l) => l && l.split("\t")[1] !== "p").map((l) => {
+    const areas = readFileSync(file, "utf8").split("\n").filter((l) => l && ["r", "n"].includes(l.split("\t")[1])).map((l) => {
       const [id, , box] = l.split("\t");
       return { id, box: box.split(",").map(Number), line: l };
     });

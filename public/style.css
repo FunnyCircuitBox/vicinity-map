@@ -512,3 +512,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 }
 .shared-note { display: inline-block; margin-top: 4px; font-size: .8rem; color: var(--text-2); }
 .shared-note::before { content: "🪙 "; }
+
+/* coloured map (the 🎨 switch): a clear blue sea under the coloured countries */
+.citymap canvas.is-colored { background: radial-gradient(120% 90% at 55% 45%, #10345a, #081a30); }
+:root[data-theme="light"] .citymap canvas.is-colored { background: radial-gradient(120% 90% at 55% 45%, #cfe6f7, #aecfeb); }
+
+/* "no community here yet": the three nearest communities */
+.nearby-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; }

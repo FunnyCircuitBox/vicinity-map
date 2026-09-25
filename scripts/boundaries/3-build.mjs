@@ -8,8 +8,8 @@
 //     and places at (almost) the same spot as a bigger one (Financial District → New York City).
 //  3. Every other city gets the leftover land nearest to it (Voronoi), up to 25 km (50 km for 1M+
 //     cities), cut to its country's coastline/borders and around real boundaries.
-//  4. Metro areas: small places (< 500k) hugging a big city (West New York, Daly City) join its coin
-//     and area. Neighbouring cities of 500k+ (Newark, Oakland, Guarulhos) keep their own coin.
+//  4. Communities merge by "the bigger the place, the farther it reaches" (details in step 4b); the
+//     county seat names a merged coin when sizes are close. Big cities keep their neighbours.
 //  5. No overlaps: areas are rounded to the stored precision first, then any two that still share
 //     more than 1 m² (any country) give the shared part to one of them (overlaps.mjs).
 //  Hand corrections: scripts/boundaries/metro-overrides.json
@@ -27,7 +27,12 @@ import { distanceKm, radiusFor } from "../../src/cities.js";
 const CACHE = ".cache/boundaries";
 const OUT = "public/data/bounds";
 const OVERRIDES = "scripts/boundaries/metro-overrides.json";
-const data = JSON.parse(readFileSync("public/data/cities.json", "utf8"));
+// CITIES = the city list (default the site's), SHAPES = folder of downloaded shapes (default "shapes")
+const data = JSON.parse(readFileSync(process.env.CITIES || "public/data/cities.json", "utf8"));
+const SHAPES = process.env.SHAPES || "shapes";
+// A community (a place with its own coin and area) needs this many people. Smaller places become part
+// of the community around them, or are "outside" (empty land: people there pick a nearby community).
+const MIN_COMMUNITY = 4000;
 
 // ---- helpers --------------------------------------------------------------------------------
 const bboxOf = (area) => {
@@ -36,6 +41,16 @@ const bboxOf = (area) => {
   return [a, b, c, d];
 };
 const inBox = (lon, lat, b) => lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3];
+/** A 1° grid of boxes, to find what's at a point without checking everything. */
+function gridOf(items, boxOfItem) {
+  const g = new Map();
+  for (const it of items) {
+    const b = boxOfItem(it);
+    for (let x = Math.floor(b[0]); x <= Math.floor(b[2]); x++)
+      for (let y = Math.floor(b[1]); y <= Math.floor(b[3]); y++) { const k = x + "," + y; (g.get(k) ?? g.set(k, []).get(k)).push(it); }
+  }
+  return (lon, lat) => g.get(Math.floor(lon) + "," + Math.floor(lat)) || [];
+}
 const hits = (p, q) => p[0] <= q[2] && q[0] <= p[2] && p[1] <= q[3] && q[1] <= p[3];
 const kmArea = (area) => {
   let s = 0;
@@ -106,8 +121,12 @@ for (const f of JSON.parse(readFileSync(`${CACHE}/countries.geojson`, "utf8")).f
 // ---- 1. real boundaries, smaller wins ---------------------------------------------------------
 const cities = [];
 for (const [cc, rows] of Object.entries(data.byCountry))
-  for (const [id, name, adm, lat, lon, pop] of rows) cities.push({ id: String(id), name, cc, adm, lat, lon, pop: pop || 0 });
+  for (const [id, name, adm, lat, lon, pop, seat] of rows) cities.push({ id: String(id), name, cc, adm, lat, lon, pop: pop || 0, seat: seat === 1 });
 const byId = new Map(cities.map((c) => [c.id, c]));
+// communities: 4,000+ people, and every country's three biggest places (so small territories have one)
+for (const rows of Object.values(data.byCountry)) rows.slice().sort((a, b) => b[5] - a[5]).slice(0, 3).forEach((r) => (byId.get(String(r[0])).community = true));
+for (const c of cities) if (c.pop >= MIN_COMMUNITY) c.community = true;
+console.log(`${cities.filter((c) => c.community).length.toLocaleString()} places are big enough to be a community (of ${cities.length.toLocaleString()} listed)`);
 
 // Which of a city's matching boundaries is "the city"?
 //  - a boundary tagged with the city's own Wikidata item beats a name match
@@ -124,11 +143,12 @@ const relOwner = new Map();
 const missing = [];
 let tooDense = 0;
 for (const cc of Object.keys(data.byCountry)) {
-  const file = `${CACHE}/shapes/${cc}.json`;
+  const file = `${CACHE}/${SHAPES}/${cc}.json`;
   if (!existsSync(file)) { missing.push(cc); continue; }
   const { cities: matches, shapes } = JSON.parse(readFileSync(file, "utf8"));
   for (const [id, list] of Object.entries(matches)) {
     const c = byId.get(id);
+    if (!c?.community) continue; // only communities get an area of their own
     const ok = list
       .filter((m) => !c.pop || c.pop / Math.max(0.01, kmArea(shapes[m.rel])) <= MAX_DENSITY)
       .sort((a, b) => b.byQ - a.byQ || rank(a.level) - rank(b.level));
@@ -197,11 +217,13 @@ console.log(`real boundaries: ${placed.length}`);
 // ---- 2. places inside another city's real boundary -------------------------------------------
 // within reach → part of that city; far inside a very large boundary → an "enclave" that gets its own
 // nearest-land area, cut out of the big boundary in step 3
+// (a place too small to be a community is part of the boundary it sits in, however far out)
+const placedAt = gridOf(placed, (p) => p.box);
 for (const c of cities) {
   if (c.kind || c.parentCity) continue;
-  const owner = placed.find((p) => inBox(c.lon, c.lat, p.box) && inArea(c.lon, c.lat, p.area));
+  const owner = placedAt(c.lon, c.lat).find((p) => inBox(c.lon, c.lat, p.box) && inArea(c.lon, c.lat, p.area));
   if (!owner) continue;
-  if (absorbs(owner.city, c)) c.parentCity = owner.city;
+  if (!c.community || absorbs(owner.city, c)) c.parentCity = owner.city;
   else c.enclaveOf = owner;
 }
 
@@ -210,12 +232,17 @@ for (const c of cities) {
 // the city in step 4 (Staten Island's land becomes New York City's, not Elizabeth's).
 for (const list of Map.groupBy(cities, (c) => c.cc).values()) {
   const free = list.filter((c) => !c.parentCity && !keepSeparate.has(c.id)).sort((a, b) => b.pop - a.pop);
-  // Two listed places at (almost) the same spot are one place: "New York City" and "Financial District"
+  // Two communities at (almost) the same spot are one place: "New York City" and "Financial District"
   // share a point, so do "Queens" and "Ozone Park". The smaller one joins the bigger one.
-  for (const [i, c] of free.entries()) {
-    if (c.kind === "r") continue;
-    const b = free.slice(0, i).find((x) => !x.parentCity && distanceKm(c.lat, c.lon, x.lat, x.lon) < 1.5);
-    if (b) c.parentCity = top(b); // same point: no land of its own to bring
+  const cells = new Map(), cell = (c) => `${Math.floor(c.lon * 20)},${Math.floor(c.lat * 20)}`; // ≈ 5 km cells
+  for (const c of free) {
+    if (!c.community) continue;
+    const [x, y] = cell(c).split(",").map(Number);
+    let b = null;
+    for (let dx = -1; dx <= 1 && !b; dx++) for (let dy = -1; dy <= 1 && !b; dy++)
+      b = (cells.get(`${x + dx},${y + dy}`) || []).find((o) => !o.parentCity && distanceKm(c.lat, c.lon, o.lat, o.lon) < 1.5) || null;
+    if (b && c.kind !== "r") { c.parentCity = top(b); continue; } // same point: no land of its own to bring
+    (cells.get(cell(c)) ?? cells.set(cell(c), []).get(cell(c))).push(c);
   }
   // Wikidata says the place is located in a bigger listed city (Brooklyn → New York City,
   // Carabanchel → Madrid, Pinheiros → São Paulo), whether or not we have that city's official
@@ -226,7 +253,9 @@ for (const list of Map.groupBy(cities, (c) => c.cc).values()) {
     const owner = (locatedIn[c.id] || []).map((id) => byId.get(id))
       .filter((b) => b && b.cc === c.cc && b.pop > c.pop && distanceKm(c.lat, c.lon, b.lat, b.lon) <= reachKm(b))
       .sort((a, b) => b.pop - a.pop)[0];
-    if (owner && top(owner) !== c) mergeInto.set(c, owner);
+    if (!owner || top(owner) === c) continue;
+    if (c.community) mergeInto.set(c, owner); // brings its nearest land along (step 4)
+    else c.parentCity = owner;                 // too small for land of its own
   }
 }
 
@@ -236,13 +265,14 @@ for (const list of Map.groupBy(cities, (c) => c.cc).values()) {
 // to them up to about 25 km beyond its edge; cities without one get up to 25 km around their centre
 // (50 km for 1M+ cities). Only land farther than that from every city stays empty.
 const BEYOND_EDGE_KM = 25;
+const citiesIn = Map.groupBy(cities, (c) => c.cc);
 const edgeReachKm = (c) => {
   let far = 0;
   for (const [outer] of c.area) for (const [lon, lat] of outer) far = Math.max(far, distanceKm(c.lat, c.lon, lat, lon));
   return far + BEYOND_EDGE_KM;
 };
 for (const cc of Object.keys(data.byCountry)) {
-  const rest = cities.filter((c) => c.cc === cc && !c.parentCity && (!c.kind || c.kind === "r"));
+  const rest = (citiesIn.get(cc) || []).filter((c) => c.community && !c.parentCity && (!c.kind || c.kind === "r"));
   if (!rest.length) continue;
   const kx = Math.cos(((rest.reduce((s, c) => s + c.lat, 0) / rest.length) * Math.PI) / 180);
   const pts = rest.map((c) => [c.lon * kx, c.lat]);
@@ -309,16 +339,7 @@ for (const cc of Object.keys(data.byCountry)) {
   });
 }
 
-// ---- 4. metro areas: small places hugging a big city share its coin ---------------------------
-// A place under 500k people (and at most a third of the big city) whose centre is within a few km of a
-// big city's area joins it: West New York, Hoboken, Jersey City, Yonkers → New York City; Daly City →
-// San Francisco; Tongi → Dhaka. Its area is added to the big city's area. Other big cities (Oakland,
-// Newark) stay separate, and nothing merges across a country border.
-const metroKm = (c) => (c.pop >= 5e6 ? 8 : c.pop >= 1e6 ? 5 : 3);
-const words = (s) => ` ${String(s).normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
-const core = (b) => words(b.name).replace(/ city /g, " ").trim(); // "New York City" → "new york"
-// "South San Francisco", "West New York": named after the big city, so allowed a bit further out
-const namedAfter = (p, b) => core(b).length >= 4 && words(p.name).includes(` ${core(b)} `);
+// ---- 4. metro coins: a big city and its neighbouring cities and towns share one coin --------------
 function kmToArea(lon, lat, area) {
   if (inArea(lon, lat, area)) return 0;
   const kx = 111.32 * Math.cos((lat * Math.PI) / 180), ky = 110.57;
@@ -351,33 +372,43 @@ for (const [childId, parentId] of Object.entries(overrides.merge || {})) {
 }
 applyMerges([...mergeInto]);
 
-// 4b. round by round, as the big city grows. First round: anything touching it, also across a state line
-// if it's close (within ¾ of the usual distance: West New York, Jersey City across the Hudson, but not
-// Newark). Later rounds: same state/province
-// only and within the city's reach (Yonkers via the Bronx; not Newark via Jersey City).
+// 4b. "The bigger the place, the farther it reaches." Each community reaches out to
+//     4 + 12 × log10(people / 5,000) km: about 4 km for 5,000 people, 16 km for 50,000, 20 km for
+//     100,000, 28 km for 500,000 and 40 km for 5 million. Biggest first, a community joins the one
+//     whose reach it is relatively deepest in, when:
+//      - that one has 500k+ people and it has fewer (New York City keeps Newark, Yonkers, Jersey City;
+//        Denver keeps Aurora, Lakewood; Dhaka keeps Narayanganj, Savar), or
+//      - it is at most half that one's size (Syracuse + Clay, Albany + Troy, Utica + Whitesboro), or
+//      - it is right next door: within 40% of the reach, and at least 5 km (Herkimer + Ilion).
+//     Otherwise it keeps its own coin (Rome, Herkimer, Little Falls next to Utica).
+//     The county seat (or capital) names the coin when it is about as big as the biggest member
+//     (within 25%): Herkimer + Ilion is "Herkimer". Nothing merges across a country border, and the
+//     country manager can change any of it (scripts/boundaries/metro-overrides.json).
+const reachOf = (pop) => (pop >= 5000 ? 4 + 12 * Math.log10(pop / 5000) : 3);
 const metroJoined = new Set();
-for (let round = 0; round < 12; round++) {
-  const found = [];
-  for (const list of Map.groupBy(cities.filter((c) => c.area && !c.parentCity), (c) => c.cc).values()) {
-    const bigs = list.filter((c) => c.pop >= BIG);
-    for (const p of list) {
-      if (p.pop >= BIG || keepSeparate.has(p.id) || p.enclaveOf) continue;
-      let best = null, bestKm = Infinity;
-      for (const b of bigs) {
-        if (p.pop > b.pop / 3) continue;
-        const sameState = p.adm === b.adm;
-        if (round > 0 && (!sameState || distanceKm(p.lat, p.lon, b.lat, b.lon) > reachKm(b))) continue;
-        const reach = metroKm(b) * (sameState ? 1 : 0.75) * (namedAfter(p, b) ? 3 : 1), pad = reach / 80;
-        if (!inBox(p.lon, p.lat, [b.box[0] - pad * 2, b.box[1] - pad, b.box[2] + pad * 2, b.box[3] + pad])) continue;
-        const km = kmToArea(p.lon, p.lat, b.core ?? b.area); // from the city itself, not its surrounding land
-        if (km <= reach && (km < bestKm || (km === bestKm && b.pop > best.pop))) { best = b; bestKm = km; }
+{
+  const pairs = [];
+  for (const list of Map.groupBy(cities.filter((c) => c.community && !c.parentCity && !mergeInto.has(c)), (c) => c.cc).values()) {
+    const roots = [];
+    for (const p of list.sort((a, b) => b.pop - a.pop)) {
+      let best = null, bestRel = Infinity;
+      if (!keepSeparate.has(p.id)) for (const b of roots) {
+        if (Math.abs(b.lat - p.lat) > 0.5 || Math.abs(b.lon - p.lon) > 0.9) continue; // farther than any reach
+        const d = distanceKm(p.lat, p.lon, b.lat, b.lon), r = reachOf(b.pop);
+        if (d > r) continue;
+        const ok = b.pop >= BIG ? p.pop < BIG : p.pop <= b.pop / 2 || d <= Math.max(0.4 * r, 5);
+        if (ok && d / r < bestRel) { best = b; bestRel = d / r; }
       }
-      if (best) found.push([p, best]);
+      if (best) best.members.push(p); else { p.members = []; roots.push(p); }
+    }
+    for (const root of roots) {
+      if (!root.members.length) continue;
+      const lead = [root, ...root.members].filter((x) => x.seat && x.pop >= 0.75 * root.pop).sort((a, b) => b.pop - a.pop)[0] || root;
+      for (const m of [root, ...root.members]) if (m !== lead) { pairs.push([m, lead]); metroJoined.add(m); }
     }
   }
-  if (!found.length) break;
-  for (const [p, b] of found) { mergeInto.set(p, b); metroJoined.add(p); }
-  applyMerges(found);
+  for (const [m, lead] of pairs) mergeInto.set(m, lead);
+  applyMerges(pairs);
 }
 for (const c of cities) if (c.parentCity) { c.kind = "p"; c.parent = top(c).id; }
 
@@ -492,15 +523,25 @@ for (const c of cities) {
   const kept = c.area.filter((poly) => kmArea([poly]) >= 0.2 || inArea(c.lon, c.lat, [poly]));
   if (kept.length) { c.area = kept; c.box = bboxOf(kept); }
 }
-console.log(`one coin per big city: ${cities.filter((c) => c.kind === "p").length} listed places are part of a bigger city (${metroJoined.size} of them small towns just outside it)`);
+// ---- 6. every smaller place: part of the community it sits in, or "outside" (empty land) ------------
+{
+  const areaAt = gridOf(cities.filter((c) => c.area?.length && c.kind !== "p"), (c) => c.box);
+  for (const c of cities) {
+    if (c.kind === "p" || c.area?.length) continue;
+    const home = areaAt(c.lon, c.lat).find((o) => inBox(c.lon, c.lat, o.box) && inArea(c.lon, c.lat, o.area));
+    if (home) { c.kind = "p"; c.parentCity = home; c.parent = top(home).id; }
+    else c.kind = "o"; // people here pick one of the three nearest communities
+  }
+}
+console.log(`one coin per community: ${cities.filter((c) => c.kind === "p").length.toLocaleString()} listed places are part of a community (${metroJoined.size} of them merged by reach), ${cities.filter((c) => c.kind === "o").length.toLocaleString()} are outside every community`);
 
 // ---- output -----------------------------------------------------------------------------------
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 const index = {};
-const stats = { r: 0, n: 0, p: 0, none: 0 };
+const stats = { r: 0, n: 0, p: 0, o: 0, none: 0 };
 for (const cc of Object.keys(data.byCountry)) {
-  const list = cities.filter((c) => c.cc === cc);
+  const list = citiesIn.get(cc) || [];
   const lines = [];
   let box = [Infinity, Infinity, -Infinity, -Infinity];
   for (const c of list) {
@@ -510,6 +551,7 @@ for (const cc of Object.keys(data.byCountry)) {
       lines.push(`${c.id}\t${c.kind}\t${b}\t${JSON.stringify(encodeArea(c.area))}`);
       box = [Math.min(box[0], c.box[0]), Math.min(box[1], c.box[1]), Math.max(box[2], c.box[2]), Math.max(box[3], c.box[3])];
     } else if (c.kind === "p") lines.push(`${c.id}\tp\t${c.parent}`);
+    else if (c.kind === "o") lines.push(`${c.id}\to\t-`);
   }
   if (!lines.length) continue;
   const text = lines.join("\n") + "\n";
@@ -522,7 +564,9 @@ const parts = Object.fromEntries(cities.filter((c) => c.kind === "p").map((c) =>
 // joined: the parts that sat outside the big city's own area and were added to it (West New York),
 // so the map can say "official boundary + nearby towns" instead of just "official boundary"
 const joined = [...metroJoined].filter((c) => c.kind === "p").map((c) => c.id);
-writeFileSync(`${OUT}/index.json`, JSON.stringify({ source: "OpenStreetMap contributors (ODbL); Natural Earth; GeoNames (CC BY 4.0)", countries: index, parts, joined }));
+// outside: small places in empty land (their people are offered the three nearest communities)
+const outside = cities.filter((c) => c.kind === "o").map((c) => c.id);
+writeFileSync(`${OUT}/index.json`, JSON.stringify({ source: "OpenStreetMap contributors (ODbL); Natural Earth; GeoNames (CC BY 4.0)", countries: index, parts, joined, outside }));
 const total = Object.values(index).reduce((s, x) => s + x.bytes, 0);
-console.log(`cities: ${stats.r} real boundary, ${stats.n} nearest area, ${stats.p} part of another city, ${stats.none} without area`);
+console.log(`cities: ${stats.r} real boundary, ${stats.n} nearest area, ${stats.p} part of a community, ${stats.o} outside, ${stats.none} without area`);
 console.log(`files: ${Object.keys(index).length} countries, ${(total / 1e6).toFixed(1)} MB total, biggest ${Object.entries(index).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 3).map(([k, v]) => `${k} ${(v.bytes / 1e6).toFixed(1)} MB`).join(", ")}`);

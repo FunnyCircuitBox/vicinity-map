@@ -58,6 +58,11 @@ test("map v2: zoom controls, coin preview, live feed, moderator row, scripts in 
   assert.deepEqual(order, ["theme", "app", "ticker", "cities"]);
 });
 
+test("map: switch between the plain and the coloured map", () => {
+  assert.match(html, /id="map-style"[^>]*aria-pressed="false"/);
+  assert.doesNotMatch(html, /satellite/i);
+});
+
 test("theme: toggle in the header, theme script runs before paint (not deferred)", () => {
   assert.match(html, /data-theme-toggle/);
   assert.match(html, /<script src="\/theme\.js"><\/script>\s*<\/head>/);

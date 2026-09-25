@@ -191,6 +191,7 @@ export async function handleClaim(request, env = {}, now = Date.now(), fetchImpl
   if (city.id) {
     const row = bounds && !city.id.startsWith("c") ? findCityArea(bounds, city.id) : null;
     if (row?.kind === "p") return no("part_of", 409, { parentId: row.parent });
+    if (row?.kind === "o") return no("not_a_community", 409); // too small, in empty land: pick a nearby community
     if (row?.area) {
       if (!inArea(loc.lon, loc.lat, row.area)) return no("not_in_city", 403);
     } else {

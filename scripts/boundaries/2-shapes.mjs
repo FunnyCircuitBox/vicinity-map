@@ -2,7 +2,9 @@
 //  a) per country, list OSM boundaries and match them to our cities by Wikidata item or by name
 //  b) download the matches' shapes, join their ways into rings, simplify
 //  c) keep every match that really contains the city's point (step 3 chooses)
-// Output: .cache/boundaries/shapes/XX.json  { cities: { geonamesId: [{ rel, level, byQ }] }, shapes: { rel: area } }
+// Output: .cache/boundaries/<SHAPES>/XX.json  { cities: { geonamesId: [{ rel, level, byQ }] }, shapes: { rel: area } }
+//   SHAPES=folder name (default "shapes"); shapes already downloaded in "shapes" are reused, not fetched again.
+//   Each country's list of candidate boundaries is cached in .cache/boundaries/candidates/.
 // Safe to re-run: finished countries are skipped. Limit to countries: node 2-shapes.mjs BD US [--server=1]
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { inArea } from "../../src/geo.js";
@@ -15,9 +17,12 @@ const SERVERS = ["https://overpass-api.de/api", "https://maps.mail.ru/osm/tools/
 const server = Number(process.argv.find((a) => a.startsWith("--server="))?.split("=")[1] ?? 0);
 const ENDPOINT = `${SERVERS[server]}/interpreter`;
 const TOLERANCE = 0.0004; // degrees (≈ 45 m): simplification
-mkdirSync(`${CACHE}/shapes`, { recursive: true });
+const SHAPES = process.env.SHAPES || "shapes";
+mkdirSync(`${CACHE}/${SHAPES}`, { recursive: true });
+mkdirSync(`${CACHE}/candidates`, { recursive: true });
 
-const data = JSON.parse(readFileSync("public/data/cities.json", "utf8"));
+// the city list to work on (CITIES=path to use another list, e.g. while building a bigger one)
+const data = JSON.parse(readFileSync(process.env.CITIES || "public/data/cities.json", "utf8"));
 const links = JSON.parse(readFileSync(`${CACHE}/links.json`, "utf8"));
 const only = process.argv.slice(2).filter((a) => !a.startsWith("--")).map((s) => s.toUpperCase());
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -59,21 +64,32 @@ async function overpass(query) {
 async function candidatesIn(cc, cities) {
   const all = `rel(area.c)["boundary"="administrative"]["admin_level"~"^[2-9]$"]; rel(area.c)["place"~"^(city|town|municipality)$"];`;
   const cols = `[out:csv(::id,admin_level,wikidata,name,"name:en","int_name","official_name","alt_name";false;"\\t")][timeout:900]`;
+  // cached per country, or per 3° square for big countries (a longer city list only adds squares)
+  const cached = async (file, query) => {
+    if (existsSync(file)) return readFileSync(file, "utf8");
+    const text = await overpass(query);
+    writeFileSync(file, text);
+    return text;
+  };
   let csv = "";
   if (cities.length > 150) {
     const T = 3, tiles = new Set(cities.map((c) => `${Math.floor(c.lat / T) * T},${Math.floor(c.lon / T) * T}`));
+    mkdirSync(`${CACHE}/candidates/${cc}`, { recursive: true });
     let n = 0;
     for (const t of tiles) {
       const [s, w] = t.split(",").map(Number);
-      csv += (await overpass(`${cols};(${all.replaceAll("(area.c)", `(${s},${w},${s + T},${w + T})`)});out;`)) + "\n";
+      csv += (await cached(`${CACHE}/candidates/${cc}/${s}_${w}.tsv`, `${cols};(${all.replaceAll("(area.c)", `(${s},${w},${s + T},${w + T})`)});out;`)) + "\n";
       if (++n % 10 === 0) console.log(`  ${cc}: ${n}/${tiles.size} map tiles searched`);
     }
-  } else csv = await overpass(`${cols};area["ISO3166-1:alpha2"="${cc}"]["admin_level"="2"]->.c;(${all});out;`);
+  } else csv = await cached(`${CACHE}/candidates/${cc}.tsv`, `${cols};area["ISO3166-1:alpha2"="${cc}"]["admin_level"="2"]->.c;(${all});out;`);
   if (csv.trim().split("\n").length < 2) {
     const lats = cities.map((c) => c.lat), lons = cities.map((c) => c.lon);
     const box = `${Math.min(...lats) - 0.5},${Math.min(...lons) - 0.5},${Math.max(...lats) + 0.5},${Math.max(...lons) + 0.5}`;
-    csv = await overpass(`${cols};(${all.replaceAll("(area.c)", `(${box})`)});out;`);
+    csv = await cached(`${CACHE}/candidates/${cc}-box.tsv`, `${cols};(${all.replaceAll("(area.c)", `(${box})`)});out;`);
   }
+  return parseCandidates(csv);
+}
+function parseCandidates(csv) {
   const rows = new Map(); // a boundary crossing two tiles comes back twice
   for (const line of csv.split("\n").filter(Boolean)) {
     const [id, level, wikidata, ...names] = line.split("\t");
@@ -133,7 +149,7 @@ function toArea(rel) {
 let countries = Object.keys(data.byCountry).filter((cc) => !only.length || only.includes(cc));
 if (process.argv.includes("--reverse")) countries = countries.reverse(); // a second worker can start from the other end
 for (const cc of countries) {
-  const out = `${CACHE}/shapes/${cc}.json`, lock = `${out}.lock`;
+  const out = `${CACHE}/${SHAPES}/${cc}.json`, lock = `${out}.lock`;
   if (existsSync(out)) continue;
   // another worker is on this country right now (locks older than 30 min are from a stopped run)
   if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs < 30 * 60_000) continue;
@@ -151,20 +167,27 @@ async function country(cc, out) {
   //    Country-level (2–3) boundaries only count for city-states (a country with 1–2 listed cities).
   const rows = await candidatesIn(cc, cities);
   const minLevel = cities.length <= 2 ? 2 : 4;
+  const byName = new Map(), byWd = new Map(); // look boundaries up by name and by Wikidata item
+  for (const r of rows) {
+    if (r.level < minLevel) continue;
+    for (const k of r.names) (byName.get(k) ?? byName.set(k, []).get(k)).push(r);
+    for (const q of r.wikidata) (byWd.get(q) ?? byWd.set(q, []).get(q)).push(r);
+  }
   const candidates = new Map();
   for (const c of cities) {
-    const qs = new Set(links[c.id]?.q ?? []);
-    const key = norm(c.name);
-    const list = rows
-      .filter((r) => r.level >= minLevel)
-      .map((r) => ({ ...r, byQ: r.wikidata.some((q) => qs.has(q)), byName: r.names.has(key) }))
-      .filter((r) => r.byQ || r.byName);
-    if (list.length) candidates.set(c.id, list);
+    const qs = links[c.id]?.q ?? [];
+    const found = new Map();
+    for (const r of byName.get(norm(c.name)) ?? []) found.set(r.id, { ...r, byQ: false, byName: true });
+    for (const q of qs) for (const r of byWd.get(q) ?? []) found.set(r.id, { ...r, byQ: true, byName: found.has(r.id) });
+    if (found.size) candidates.set(c.id, [...found.values()]);
   }
 
   // b) download shapes, 40 relations per request (5 at a time if a big batch keeps failing)
-  const all = [...new Set([...candidates.values()].flat().map((r) => r.id))];
   const shapes = new Map();
+  const earlier = `${CACHE}/shapes/${cc}.json`;
+  if (SHAPES !== "shapes" && existsSync(earlier))
+    for (const [rel, area] of Object.entries(JSON.parse(readFileSync(earlier, "utf8")).shapes)) shapes.set(rel, area);
+  const all = [...new Set([...candidates.values()].flat().map((r) => r.id))].filter((id) => !shapes.has(id));
   const fetchShapes = async (ids) => {
     const json = JSON.parse(await overpass(`[out:json][timeout:900];rel(id:${ids.join(",")});out geom;`));
     for (const el of json.elements) if (el.type === "relation") shapes.set(String(el.id), toArea(el));
@@ -173,6 +196,7 @@ async function country(cc, out) {
     const batch = all.slice(i, i + 40);
     try { await fetchShapes(batch); } catch { for (let j = 0; j < batch.length; j += 5) await fetchShapes(batch.slice(j, j + 5)); }
     await sleep(1000);
+    if ((i / 40) % 25 === 24) console.log(`  ${cc}: ${i + 40}/${all.length} shapes downloaded`);
   }
 
   // c) only boundaries that actually contain the city's point count (guards against same-name places

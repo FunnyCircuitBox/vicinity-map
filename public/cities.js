@@ -60,6 +60,28 @@
   }
   window.addEventListener("vicinity:theme", readPalette);
 
+  // ---- map style: the plain map (default) or the coloured one (the 🎨 switch) ----
+  let mapStyle = (() => { try { return localStorage.getItem("vicinity-map-style") === "colored" ? "colored" : "plain"; } catch { return "plain"; } })();
+  // coloured map: soft colours for countries, brighter ones for city areas; neighbours never share a colour
+  const COUNTRY_COLORS = {
+    light: ["#f3e7cf", "#dfead0", "#e9dff0", "#f6dfd2", "#d7e8f0", "#ece4c3", "#e0efe3", "#f2dbe1"],
+    dark: ["#22344f", "#233b37", "#312d48", "#3b3126", "#1f3b46", "#36361f", "#253f33", "#3c2835"],
+  };
+  const AREA_COLORS = ["#4cc9f0", "#90be6d", "#f9c74f", "#f8961e", "#f28482", "#b388eb", "#43aa8b", "#ff99c8"];
+  const hexA = (hex, a) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+  const boxesTouch = (p, q) => p[0] <= q[2] && q[0] <= p[2] && p[1] <= q[3] && q[1] <= p[3];
+  /** Greedy colouring: each shape takes the first colour that no already-coloured neighbour (touching box) has. */
+  function colorize(list, pool, n) {
+    for (const it of list) {
+      if (it.color != null) continue;
+      const used = new Array(n).fill(0);
+      for (const o of pool) if (o !== it && o.color != null && boxesTouch(it.box, o.box)) used[o.color]++;
+      let best = used.indexOf(0);
+      if (best < 0) best = used.indexOf(Math.min(...used));
+      it.color = best;
+    }
+  }
+
   // ---- geometry (same encoding as src/geo.js) ----
   const decodeRing = (flat, unit) => { const out = new Array(flat.length / 2); let x = 0, y = 0; for (let i = 0; i < flat.length; i += 2) { x += flat[i]; y += flat[i + 1]; out[i / 2] = [x * unit, y * unit]; } return out; };
   const inRing = (lon, lat, r) => { let inside = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside; } return inside; };
@@ -85,8 +107,10 @@
           const [id, kind, box, json] = line.split("\t");
           if (!json) continue; // "part of" lines carry no shape
           const area = JSON.parse(json).map((poly) => poly.map((r) => decodeRing(r, 1e-4)));
-          areas.set(id, { kind, box: box.split(",").map(Number), area, path: toPath(area), km2: kmArea(area) });
+          const a = { kind, box: box.split(",").map(Number), area, path: toPath(area), km2: kmArea(area) };
+          areas.set(id, a);
         }
+        colorize([...areas.values()].filter((a) => a.color == null).sort((p, q) => q.km2 - p.km2), [...areas.values()], AREA_COLORS.length);
         needDraw = true; kick();
       }).catch(() => { boundsLoads.delete(cc); }));
     }
@@ -167,6 +191,7 @@
 
   function draw(now) {
     const t = now / 1000, s = s0 * k, v = view();
+    const colored = mapStyle === "colored";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     // graticule
@@ -177,11 +202,11 @@
     for (let lat = Math.ceil(v[1] / step) * step; lat <= v[3]; lat += step) { const y = Math.round(sy(lat)) + 0.5; ctx.moveTo(0, y); ctx.lineTo(W, y); }
     ctx.stroke();
 
-    // land and country borders
+    // land (one colour, or each country its own on the coloured map) and country borders
     ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * tx, dpr * ty);
     ctx.lineJoin = "round";
-    ctx.fillStyle = pal.land;
-    for (const w of world) if (boxInView(w.box, v)) ctx.fill(w.path, "evenodd");
+    const countryColors = COUNTRY_COLORS[pal.light ? "light" : "dark"];
+    for (const w of world) if (boxInView(w.box, v)) { ctx.fillStyle = colored ? countryColors[w.color ?? 0] : pal.land; ctx.fill(w.path, "evenodd"); }
     ctx.strokeStyle = pal.landLine; ctx.lineWidth = 1 / s;
     for (const w of world) if (boxInView(w.box, v)) ctx.stroke(w.path);
     if (hoverCountry && k < AREA_K) {
@@ -198,7 +223,8 @@
         if (!boxInView(a.box, v)) continue;
         const c = byId.get(id); if (!c) continue;
         const cl = claims.get(id), mine = cl && me() && cl.wallet === me();
-        ctx.fillStyle = mine ? "rgba(255,200,87,.24)" : cl ? "rgba(255,90,54,.2)" : c === hover ? pal.hoverFill : pal.area;
+        const tint = colored ? hexA(AREA_COLORS[a.color ?? 0], c === hover ? 0.5 : pal.light ? 0.3 : 0.24) : c === hover ? pal.hoverFill : pal.area;
+        ctx.fillStyle = mine ? "rgba(255,200,87,.24)" : cl ? "rgba(255,90,54,.2)" : tint;
         ctx.fill(a.path, "evenodd");
         shown.push([a, cl, mine]);
       }
@@ -230,7 +256,9 @@
     const zs = Math.min(3.2, Math.pow(k, 0.45)) * (k >= AREA_K ? 0.55 : 1);
     ctx.fillStyle = pal.dot;
     ctx.globalAlpha = 0.7;
+    const minPop = dotMinPop(); // zoomed out, only bigger places (the list is sorted biggest first)
     for (const c of cities) {
+      if (c.pop < minPop) break;
       if (parts.has(c.id)) continue;
       const x = sx(c.lon), y = sy(c.lat);
       if (!inView(x, y)) continue;
@@ -306,9 +334,13 @@
   function kick() { if (!raf) raf = requestAnimationFrame(loop); }
   const ripple = (c, col = "255,200,87") => { ripples.push({ lon: c.lon, lat: c.lat, t0: performance.now(), col }); kick(); };
 
+  // the smallest place drawn as a dot at this zoom (148,000 places: towns show up as you zoom in)
+  const dotMinPop = () => (k < 2 ? 150_000 : k < 4 ? 50_000 : k < 8 ? 15_000 : k < 20 ? 5_000 : 0);
   function nearest(px, py, maxPx = 16) {
     let best = null, bd = maxPx * maxPx;
+    const minPop = dotMinPop();
     for (const c of cities) {
+      if (c.pop < minPop) break;
       if (parts.has(c.id)) continue;
       const x = sx(c.lon), y = sy(c.lat);
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
@@ -403,6 +435,8 @@
     if (c) { select(c, true); ripple(c); return; }
     const w = k < AREA_K ? countryAt(...toLonLat(x, y)) : null;
     if (w && cityCount(w.cc)) { countryEl.value = w.cc; renderList(); flyToCountry(w.cc); hoverCountry = null; tip.hidden = true; }
+    // zoomed in on land that no community covers: offer the three nearest
+    else if (k >= AREA_K && countryAt(...toLonLat(x, y))) { const [lon, lat] = toLonLat(x, y); ripples.push({ lon, lat, t0: performance.now(), col: "127,163,214" }); showNearby(lon, lat); }
   };
   canvas.addEventListener("pointerup", end);
   canvas.addEventListener("pointercancel", end);
@@ -427,6 +461,21 @@
   $("#map-in").addEventListener("click", () => { flight = null; zoomAt(W / 2, H / 2, 1.8); });
   $("#map-out").addEventListener("click", () => { flight = null; zoomAt(W / 2, H / 2, 1 / 1.8); });
   $("#map-reset").addEventListener("click", () => flyTo(10, 12, 1, 800));
+  // plain / coloured map switch (remembered on this device)
+  function showStyle() {
+    const b = $("#map-style"), colored = mapStyle === "colored";
+    b.setAttribute("aria-pressed", String(colored));
+    b.title = colored ? "Show the plain map" : "Show the coloured map";
+    b.setAttribute("aria-label", b.title);
+    canvas.classList.toggle("is-colored", colored);
+    needDraw = true; kick();
+  }
+  $("#map-style").addEventListener("click", () => {
+    mapStyle = mapStyle === "colored" ? "plain" : "colored";
+    try { localStorage.setItem("vicinity-map-style", mapStyle); } catch {}
+    showStyle();
+  });
+  showStyle();
   // ◎: find the city you're standing in (location is used on this device only, never sent)
   $("#map-locate").addEventListener("click", async () => {
     const b = $("#map-locate");
@@ -438,7 +487,7 @@
       const c = await findCityAt(loc.lon, loc.lat);
       const home = c && parts.has(c.id) ? byId.get(parts.get(c.id)) : c;
       if (home) { select(home, true); V().toast?.(`📍 You're in ${home.name}`); }
-      else { flyTo(loc.lon, loc.lat, 60); V().toast?.("You're not inside a listed city yet. You can add yours below the map."); }
+      else { flyTo(loc.lon, loc.lat, 60); showNearby(loc.lon, loc.lat); V().toast?.("No community here yet: pick one of the three nearest."); }
     } catch (e) { V().toast?.(e?.message || "Couldn't get your location."); }
     finally { b.disabled = false; b.classList.remove("is-busy"); }
   });
@@ -467,6 +516,7 @@
       nm.append(el("strong", null, c.name), el("span", null, `${placeOf(c)}${c.pop ? " · " + fmt(c.pop) : ""}${c.added ? " · community-added" : ""}${tk ? " · $" + tk.ticker : ""}`));
       const cl = claims.get(c.id), mine = cl && me() && cl.wallet === me(), parent = parts.has(c.id) && byId.get(parts.get(c.id));
       b.append(nm, parent ? el("span", "tag", `Part of ${parent.name}`)
+        : outside.has(c.id) ? el("span", "tag", "No community yet")
         : el("span", mine ? "tag tag--warn" : cl ? "tag tag--no" : "tag tag--ok", mine ? "Yours" : cl ? "Claimed" : "Open"));
       b.addEventListener("click", () => select(c, true));
       li.append(b); return li;
@@ -516,11 +566,32 @@
     } catch { row.replaceChildren(el("span", "mod-row__icon", "🛡"), el("span", null, `Country moderator (${cname}): the city founder holding the most $VICINITY.`)); }
   }
 
+  /* =================== empty land: pick one of the three nearest communities =================== */
+  let outside = new Set(); // listed places too small to be a community, in empty land
+  let nearby = null;       // { name, list: [[city, km], …] } while the panel offers nearby communities
+  function nearestCommunities(lon, lat, n = 3) {
+    const best = [];
+    for (const c of cities) {
+      if (parts.has(c.id) || outside.has(c.id)) continue;
+      const d = kmBetween(lat, lon, c.lat, c.lon);
+      if (best.length === n && d >= best[n - 1][1]) continue;
+      best.push([c, d]); best.sort((a, b) => a[1] - b[1]); if (best.length > n) best.pop();
+    }
+    return best;
+  }
+  /** "No community here yet": offer the three nearest communities (their coin, leaderboard and check-ins). */
+  function showNearby(lon, lat, name = null) {
+    mode = "nearby"; selected = null;
+    nearby = { name, list: nearestCommunities(lon, lat) };
+    refreshPanel(); renderList(); renderCoin(null); $("#mod-row").hidden = true;
+    needDraw = true; kick();
+  }
+
   /* =================== claim panel =================== */
   function refreshPanel(keepError = false) {
     if (!keepError) setErr("");
     $("#claim-done").hidden = true;
-    $("#claim-reqs").hidden = false;
+    $("#claim-reqs").hidden = mode === "nearby";
     addForm.hidden = mode !== "add";
     const addr = me();
     const myCity = addr ? [...claims.entries()].find(([, v]) => v.wallet === addr) : null;
@@ -529,7 +600,21 @@
     if (addr) wt.replaceChildren(document.createTextNode("Connected: "), solscan(addr));
     else wt.replaceChildren(document.createTextNode("Any Solana wallet. "), Object.assign(el("a", null, "Connect here"), { href: "#wallet" }), document.createTextNode("."));
     const sub = $("#claim-sub");
-    if (mode === "add") {
+    if (mode === "nearby" && nearby) {
+      $("#claim-kicker").textContent = "No community here yet";
+      $("#claim-title").textContent = nearby.name ? `${nearby.name} isn't a community yet` : "This spot isn't in a community yet";
+      sub.replaceChildren(document.createTextNode("Join one of the nearest communities: its coin, leaderboard, check-ins and votes."));
+      const ul = el("ul", "nearby-list");
+      for (const [c, d] of nearby.list) {
+        const b = el("button", "city-row"); b.type = "button";
+        const nm = el("span", "city-row__name");
+        nm.append(el("strong", null, c.name), el("span", null, `${placeOf(c)} · ${d < 10 ? d.toFixed(1) : Math.round(d)} km away`));
+        b.append(nm, el("span", "tag tag--ok", "Join"));
+        b.addEventListener("click", () => select(c, true));
+        const li = document.createElement("li"); li.append(b); ul.append(li);
+      }
+      sub.append(ul, el("span", "tiny muted", "Is your town missing? Soon you can request it from where you stand; your country manager approves new communities."));
+    } else if (mode === "add") {
       $("#claim-kicker").textContent = "Add a city"; $("#claim-title").textContent = "Put your city on the map";
       sub.textContent = "Only if it isn't listed yet. You'll be its founder.";
       renderCoin(null); $("#mod-row").hidden = true;
@@ -545,7 +630,8 @@
       if (cl) sub.append(document.createElement("br"), document.createTextNode("Founder: "), solscan(cl.wallet), document.createTextNode(` · since ${new Date(cl.claimed_at).toLocaleDateString()}`));
     }
     let label = "Pick a city first", disabled = true;
-    if (!open) label = "Claims open when $VICINITY launches";
+    if (mode === "nearby") label = "Pick a community above";
+    else if (!open) label = "Claims open when $VICINITY launches";
     else if (myCity) label = `Your wallet already founded ${myCity[1].city_name}`;
     else if (mode === "claim" && !selected) label = "Pick a city first";
     else if (mode === "claim" && claims.has(selected.id)) label = "Already claimed";
@@ -554,6 +640,11 @@
     btn.textContent = label; btn.disabled = disabled || busy;
   }
   function select(c, fly = false) {
+    // too small to be a community, in empty land: offer the three nearest communities
+    if (outside.has(c.id)) {
+      if (fly) flyTo(c.lon, c.lat, Math.max(k, 60));
+      return showNearby(c.lon, c.lat, c.name);
+    }
     // a neighbourhood inside another city's official boundary belongs to that city
     if (parts.has(c.id) && byId.get(parts.get(c.id))) {
       const home = byId.get(parts.get(c.id));
@@ -593,6 +684,7 @@
     not_enough_tokens: (d) => `This wallet holds ${fmt(d.amount || 0)} $VICINITY. You need ${fmt(MIN_HOLD)} to claim a city.`,
     not_in_city: (d) => (d.km != null ? `You're about ${d.km} km from the city center. You need to be within ${d.radiusKm} km.` : "You're not inside this city's boundary right now."),
     part_of: (d) => `This place is part of ${byId.get(d.parentId)?.name || "a bigger city"}. Claim that city instead.`,
+    not_a_community: () => "This place isn't a community of its own. Pick one of the nearest communities instead.",
     inside_listed_city: (d) => `You're inside ${byId.get(d.cityId)?.name || "a listed city"}. Claim it instead of adding a new one.`,
     vpn_detected: () => "It looks like you're on a VPN, proxy or cloud network. Turn it off and use your normal home or mobile internet, then try again.",
     network_mismatch: (d) => d.networkCountry ? `Your internet connection is in a different country (${d.networkCountry}). Turn off any VPN and try again from the city.` : `Your internet connection looks about ${fmt(d.networkKm)} km away from your GPS location. Turn off any VPN and try again.`,
@@ -733,8 +825,11 @@
       countries = data.countries; admin = data.admin;
       readPalette();
       world = wd ? Object.entries(wd.countries).map(([cc, enc]) => { const area = enc.map((poly) => poly.map((r) => decodeRing(r, wd.unit))); return { cc, area, box: boxOf(area), path: toPath(area) }; }) : [];
+      const boxArea = (b) => (b[2] - b[0]) * (b[3] - b[1]);
+      colorize(world.slice().sort((p, q) => boxArea(q.box) - boxArea(p.box)), world, COUNTRY_COLORS.light.length);
       boundsIndex = bi?.countries || {};
       parts = new Map(Object.entries(bi?.parts || {}));
+      outside = new Set(bi?.outside || []);
       joined = new Set(bi?.joined || []);
       cities = Object.entries(data.byCountry).flatMap(([cc, rows]) => rows.map(([id, name, adm, lat, lon, pop]) => ({ id: String(id), name, cc, adm, lat, lon, pop, n: norm(name) })));
       cities.sort((a, b) => b.pop - a.pop);
