@@ -2,20 +2,23 @@
   "name": "vicinity-map",
   "version": "0.1.0",
   "private": true,
-  "description": "Represent your city. A community map for local memes, check-ins and city leaderboards.",
+  "description": "One city. One coin. One community. A real-boundary map of every city, with local memes, check-ins, votes and city leaders.",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build": "node scripts/copy-fonts.mjs && npm test",
+    "build": "node scripts/copy-assets.mjs && node scripts/pages/build.mjs && npm test",
     "deploy": "wrangler deploy",
     "test": "node --test test/*.test.js",
-    "check:boundaries": "node scripts/boundaries/check-overlaps.mjs"
+    "check:boundaries": "node scripts/boundaries/check-overlaps.mjs",
+    "pages": "node scripts/pages/build.mjs",
+    "demo:nyc": "node scripts/demo/nyc.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "5.3.0",
     "@fontsource-variable/space-grotesk": "5.3.0",
     "d3-delaunay": "6.0.4",
     "polygon-clipping": "0.15.7",
+    "qrcode-generator": "1.5.2",
     "wrangler": "4.137.0"
   },
   "engines": {

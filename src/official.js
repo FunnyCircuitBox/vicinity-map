@@ -6,6 +6,9 @@
 // The $VICINITY mint address. Paste it here the moment the token launches (one line change).
 export const VICINITY_MINT = null;
 
+// When the Vicinity Launchpad opens (the countdown on /launchpad). Midnight New York time, Nov 10 2026.
+export const LAUNCHPAD_OPENS_AT = "2026-11-10T00:00:00-05:00";
+
 export const OFFICIAL = {
   updated: "2026-09-23", // vicinitycity.net is the main address
   websites: ["vicinitycity.net", "vicinity-map.noyonsakibul.workers.dev"],
@@ -13,6 +16,7 @@ export const OFFICIAL = {
   socials: [],            // none yet: any "Vicinity" social account is not us
   tokenContract: VICINITY_MINT,
   teamWallets: [],        // every wallet the team controls, listed publicly
+  launchpadOpensAt: LAUNCHPAD_OPENS_AT,
   // Every official Vicinity token on every network. Anything not listed here is fake.
   tokens: [
     { network: "Solana", name: "Vicinity", symbol: "VICINITY", contract: VICINITY_MINT, platform: "pump.fun", status: "Launching soon" },
@@ -72,3 +76,6 @@ export function checkOfficial(input, isSolanaAddress) {
 
   return { verdict: "unknown", message: "That doesn't look like a link, Solana address or @handle." };
 }
+
+/** The live mint: the Cloudflare setting VICINITY_MINT wins over the line above (so launch needs no code change). */
+export const activeMint = (env) => (env && env.VICINITY_MINT) || VICINITY_MINT;

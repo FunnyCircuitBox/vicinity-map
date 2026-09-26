@@ -1,13 +1,20 @@
 /**
- * City claims database (Cloudflare D1, binding name "DB").
+ * Vicinity database (Cloudflare D1, binding name "DB").
  *
  * What is saved, and nothing more:
  *   claims       → which wallet claimed which city, and when (public on the site)
  *   added_cities → cities the community added: name, country, approximate center
  *                  (rounded to ~10 km), which wallet added it
- * Locations of visitors are never saved. Wallets that only "verify" are never saved.
+ *   users        → one account per person: ONE wallet + ONE X or Google login, a display name,
+ *                  and the home community (its id and name, never the location that found it)
+ *   sessions     → who is signed in (only a hash of the cookie is stored)
+ *   pairs        → short-lived "sign in with my phone" codes (10 minutes)
+ *   posts, votes, reports, media, bans → the local and national feeds and their moderation
+ *   requests     → "add my town" requests; the place is rounded to about 5 km
+ * Locations of visitors are never saved. Wallets that only "verify" or look up a rank are never saved.
  *
- * The UNIQUE rules in the database itself enforce: one wallet ↔ one city.
+ * The UNIQUE rules in the database itself enforce: one wallet ↔ one city,
+ * one wallet ↔ one account, one X / Google login ↔ one account.
  */
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS claims (
@@ -29,16 +36,112 @@ CREATE TABLE IF NOT EXISTS added_cities (
   hidden     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS added_by_country ON added_cities (country, norm);
+CREATE TABLE IF NOT EXISTS users (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet       TEXT NOT NULL UNIQUE,
+  provider     TEXT NOT NULL,
+  provider_id  TEXT NOT NULL,
+  handle       TEXT,
+  name         TEXT,
+  home_city    TEXT,
+  home_name    TEXT,
+  home_country TEXT,
+  home_at      TEXT,
+  early        INTEGER NOT NULL DEFAULT 0,
+  badges       TEXT,
+  created_at   TEXT NOT NULL,
+  UNIQUE (provider, provider_id)
+);
+CREATE INDEX IF NOT EXISTS users_home ON users (home_city);
+CREATE INDEX IF NOT EXISTS users_country ON users (home_country);
+CREATE TABLE IF NOT EXISTS sessions (
+  id         TEXT PRIMARY KEY,
+  wallet     TEXT,
+  user_id    INTEGER,
+  proof      TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pairs (
+  id         TEXT PRIMARY KEY,
+  pin        TEXT NOT NULL,
+  wallet     TEXT,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS posts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL,
+  scope      TEXT NOT NULL,
+  place      TEXT NOT NULL,
+  country    TEXT NOT NULL,
+  kind       TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  media_id   INTEGER,
+  parent_id  INTEGER,
+  score      INTEGER NOT NULL DEFAULT 0,
+  reports    INTEGER NOT NULL DEFAULT 0,
+  replies    INTEGER NOT NULL DEFAULT 0,
+  hidden     INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS posts_feed ON posts (scope, place, kind, created_at);
+CREATE INDEX IF NOT EXISTS posts_user ON posts (user_id, created_at);
+CREATE INDEX IF NOT EXISTS posts_parent ON posts (parent_id);
+CREATE TABLE IF NOT EXISTS votes (
+  post_id    INTEGER NOT NULL,
+  user_id    INTEGER NOT NULL,
+  weight     INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS reports (
+  post_id    INTEGER NOT NULL,
+  user_id    INTEGER NOT NULL,
+  reason     TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS media (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL,
+  type       TEXT NOT NULL,
+  bytes      BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bans (
+  user_id    INTEGER NOT NULL,
+  country    TEXT NOT NULL,
+  by_user    INTEGER NOT NULL,
+  reason     TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, country)
+);
+CREATE TABLE IF NOT EXISTS requests (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL,
+  name       TEXT NOT NULL,
+  country    TEXT NOT NULL,
+  lat        REAL NOT NULL,
+  lon        REAL NOT NULL,
+  near       TEXT,
+  status     TEXT NOT NULL DEFAULT 'waiting',
+  decided_by INTEGER,
+  note       TEXT,
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS requests_country ON requests (country, status);
 `;
 
-let schemaReady = null;
+const schemaReady = new WeakMap();
 /** Create the tables the first time they're needed ("IF NOT EXISTS" makes this safe to repeat). */
-function ensureSchema(db) {
-  if (!schemaReady) {
+export function ensureSchema(db) {
+  if (!schemaReady.has(db)) {
     const stmts = SCHEMA.split(";").map((s) => s.trim()).filter(Boolean).map((s) => db.prepare(s));
-    schemaReady = db.batch(stmts).catch((e) => { schemaReady = null; throw e; });
+    schemaReady.set(db, db.batch(stmts).catch((e) => { schemaReady.delete(db); throw e; }));
   }
-  return schemaReady;
+  return schemaReady.get(db);
 }
 
 /** D1-backed store. Every function the API needs, in one place. */
@@ -119,3 +222,6 @@ export function memoryStore() {
     },
   };
 }
+
+/** The claims store for this request: the test store when there is one, otherwise D1. */
+export const storeFor = (env) => env.store || d1Store(env.DB);

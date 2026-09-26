@@ -146,5 +146,7 @@ vite.config.ts.timestamp-*
 .dev.vars.*
 !.dev.vars.example
 .wrangler/
-# Fonts are copied in at build time (scripts/copy-fonts.mjs)
+# Fonts are copied in at build time (scripts/copy-assets.mjs)
 public/fonts/
+# The QR code library is copied in at build time (scripts/copy-assets.mjs)
+public/vendor/

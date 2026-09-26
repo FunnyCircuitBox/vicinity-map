@@ -1,13 +1,12 @@
-// Vicinity: the city map + "Claim your city". No trackers, nothing loaded from other sites.
-// Needs app.js (window.vicinity: wallet bridge) and ticker.js (window.vicinityTicker).
+// Vicinity: the city map on /cities. Claimed vs open cities, live. Claiming itself happens in the dashboard.
+// No trackers, nothing loaded from other sites. Needs site.js (window.V) and ticker.js (window.vicinityTicker).
 (() => {
   "use strict";
   const sec = document.getElementById("cities");
   if (!sec) return;
   const $ = (s, r = document) => r.querySelector(s);
-  const V = () => window.vicinity || {};
+  const V = () => window.V || {};
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const MIN_HOLD = 1_000_000;
   const fmt = (n) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   // Wallets are shown as first 5 + ***** + last 3, with a Solscan link so anyone can check the full address.
@@ -20,18 +19,14 @@
 
   const canvas = $("#city-canvas"), ctx = canvas.getContext("2d"), tip = $("#city-tip"), wrapEl = $(".citymap__stage");
   const listEl = $("#city-list"), qEl = $("#city-q"), countryEl = $("#city-country"), filterEl = $("#city-filter");
-  const btn = $("#claim-btn"), errEl = $("#claim-error"), addForm = $("#add-form");
+  const btn = $("#claim-btn");
   let cities = [], byId = new Map(), countries = {}, admin = {}, claims = new Map(), tickers = new Map(), open = false, loaded = false;
-  let selected = null, mode = "claim", busy = false, followHandle = null;
-  const me = () => V().address || null;
+  let selected = null, mode = "claim", memberCount = new Map(), totalMembers = 0;
+  // the signed-in person's wallet (to show "Yours"), from site.js
+  const me = () => V().me?.()?.user?.wallet || null;
+  const myHome = () => V().me?.()?.user?.home?.id || null;
 
   const placeOf = (c) => [admin[`${c.cc}.${c.adm}`], countries[c.cc] || c.cc].filter(Boolean).join(", ");
-  const setErr = (m) => { errEl.textContent = m || ""; errEl.hidden = !m; };
-  const req = (k, state, text) => {
-    const li = $(`[data-req="${k}"]`); if (!li) return;
-    li.classList.toggle("is-ok", state === "ok"); li.classList.toggle("is-bad", state === "bad");
-    if (text && k === "here") $("#req-here-text").textContent = text;
-  };
 
   /* =================== the map =================== */
   // World → screen: equirectangular, latitude 84°N … 60°S. view: zoom k, offset tx/ty (CSS px).
@@ -587,19 +582,13 @@
     needDraw = true; kick();
   }
 
-  /* =================== claim panel =================== */
-  function refreshPanel(keepError = false) {
-    if (!keepError) setErr("");
-    $("#claim-done").hidden = true;
+  /* =================== city panel: claiming happens in the dashboard =================== */
+  function refreshPanel() {
     $("#claim-reqs").hidden = mode === "nearby";
-    addForm.hidden = mode !== "add";
     const addr = me();
     const myCity = addr ? [...claims.entries()].find(([, v]) => v.wallet === addr) : null;
-    const wt = $("#req-wallet-text");
-    req("wallet", addr ? "ok" : null);
-    if (addr) wt.replaceChildren(document.createTextNode("Connected: "), solscan(addr));
-    else wt.replaceChildren(document.createTextNode("Any Solana wallet. "), Object.assign(el("a", null, "Connect here"), { href: "#wallet" }), document.createTextNode("."));
-    const sub = $("#claim-sub");
+    const sub = $("#claim-sub"), mrow = $("#members-row");
+    mrow.hidden = true;
     if (mode === "nearby" && nearby) {
       $("#claim-kicker").textContent = "No community here yet";
       $("#claim-title").textContent = nearby.name ? `${nearby.name} isn't a community yet` : "This spot isn't in a community yet";
@@ -613,11 +602,7 @@
         b.addEventListener("click", () => select(c, true));
         const li = document.createElement("li"); li.append(b); ul.append(li);
       }
-      sub.append(ul, el("span", "tiny muted", "Is your town missing? Soon you can request it from where you stand; your country manager approves new communities."));
-    } else if (mode === "add") {
-      $("#claim-kicker").textContent = "Add a city"; $("#claim-title").textContent = "Put your city on the map";
-      sub.textContent = "Only if it isn't listed yet. You'll be its founder.";
-      renderCoin(null); $("#mod-row").hidden = true;
+      sub.append(ul, el("span", "tiny muted", "Is your town missing? Ask for it from your dashboard, standing in it; your Country Manager approves new communities."));
     } else if (selected) {
       const cl = claims.get(selected.id);
       $("#claim-kicker").textContent = cl ? "Claimed" : "Open city";
@@ -628,16 +613,21 @@
       const shared = sharedNote(selected);
       if (shared) sub.append(document.createElement("br"), el("span", "shared-note", shared));
       if (cl) sub.append(document.createElement("br"), document.createTextNode("Founder: "), solscan(cl.wallet), document.createTextNode(` · since ${new Date(cl.claimed_at).toLocaleDateString()}`));
+      const m = memberCount.get(selected.id) || 0;
+      mrow.hidden = false;
+      mrow.textContent = m ? `👥 ${fmt(m)} verified member${m === 1 ? "" : "s"} call ${selected.name} home${cl ? "" : " · founder seat open"}` : `👥 No members yet. Be the first to call ${selected.name} home.`;
     }
-    let label = "Pick a city first", disabled = true;
+    // the button always leads to the dashboard, where wallet, holdings and location are checked together
+    let label = "Claim a city in your dashboard →", href = "/dashboard";
     if (mode === "nearby") label = "Pick a community above";
-    else if (!open) label = "Claims open when $VICINITY launches";
-    else if (myCity) label = `Your wallet already founded ${myCity[1].city_name}`;
-    else if (mode === "claim" && !selected) label = "Pick a city first";
-    else if (mode === "claim" && claims.has(selected.id)) label = "Already claimed";
-    else if (!addr) { label = "Connect your wallet"; disabled = false; }
-    else { label = mode === "add" ? "Add & claim this city" : `Claim ${selected.name}`; disabled = false; }
-    btn.textContent = label; btn.disabled = disabled || busy;
+    else if (myCity) { label = `You founded ${myCity[1].city_name} · open dashboard →`; }
+    else if (selected && claims.has(selected.id)) { label = `${selected.name} is claimed · see your dashboard →`; }
+    else if (selected) { label = open ? `Claim ${selected.name} in your dashboard →` : `Get ready to claim ${selected.name} →`; href = `/dashboard?claim=${encodeURIComponent(selected.id)}`; }
+    btn.textContent = label; btn.href = href;
+    const note = $("#claim-note");
+    note.textContent = !open ? "Claims open the moment $VICINITY launches. Sign in now and set your home community to be first in line."
+      : selected && myHome() && myHome() !== selected.id ? "You can only found the community you live in. Your dashboard shows yours."
+      : "Claiming happens in your dashboard, where your wallet, holdings and location are checked together.";
   }
   function select(c, fly = false) {
     // too small to be a community, in empty land: offer the three nearest communities
@@ -652,23 +642,13 @@
       c = home;
     }
     mode = "claim"; selected = c;
-    req("here", null, "Share your location once. We check you're inside the city's boundary on the map and that your internet connection is local too. VPNs are blocked. Nothing is saved.");
     refreshPanel(); renderList(); renderCoin(c); renderModerator(c);
     if (fly) flyToCity(c);
     // the boundary may still be loading: show it (and re-frame the map) once it's here
-    if (!areas.has(c.id)) loadBounds(c.cc).then(() => { if (selected !== c) return; refreshPanel(true); if (fly && areas.has(c.id)) flyToCity(c); });
+    if (!areas.has(c.id)) loadBounds(c.cc).then(() => { if (selected !== c) return; refreshPanel(); if (fly && areas.has(c.id)) flyToCity(c); });
     needDraw = true; kick();
   }
-  $("#city-add-open").addEventListener("click", () => {
-    mode = "add"; selected = null;
-    if (countryEl.value) $("#add-country").value = countryEl.value;
-    $("#add-name").value = qEl.value.trim();
-    refreshPanel(); renderList(); needDraw = true; kick();
-    $("#claim-panel").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "nearest" });
-    $("#add-name").focus();
-  });
-  document.addEventListener("vicinity:wallet", () => { if (loaded) { refreshPanel(); renderList(); needDraw = true; kick(); } });
-  $("#follow-ok")?.addEventListener("change", (e) => req("follow", e.target.checked ? "ok" : null));
+  document.addEventListener("vicinity:me", () => { if (loaded) { refreshPanel(); renderList(); needDraw = true; kick(); } });
 
   function getLocation() {
     return new Promise((resolve, reject) => {
@@ -679,105 +659,36 @@
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     });
   }
-  const ERR = {
-    not_launched: () => "Claims open the moment $VICINITY launches.",
-    not_enough_tokens: (d) => `This wallet holds ${fmt(d.amount || 0)} $VICINITY. You need ${fmt(MIN_HOLD)} to claim a city.`,
-    not_in_city: (d) => (d.km != null ? `You're about ${d.km} km from the city center. You need to be within ${d.radiusKm} km.` : "You're not inside this city's boundary right now."),
-    part_of: (d) => `This place is part of ${byId.get(d.parentId)?.name || "a bigger city"}. Claim that city instead.`,
-    not_a_community: () => "This place isn't a community of its own. Pick one of the nearest communities instead.",
-    inside_listed_city: (d) => `You're inside ${byId.get(d.cityId)?.name || "a listed city"}. Claim it instead of adding a new one.`,
-    vpn_detected: () => "It looks like you're on a VPN, proxy or cloud network. Turn it off and use your normal home or mobile internet, then try again.",
-    network_mismatch: (d) => d.networkCountry ? `Your internet connection is in a different country (${d.networkCountry}). Turn off any VPN and try again from the city.` : `Your internet connection looks about ${fmt(d.networkKm)} km away from your GPS location. Turn off any VPN and try again.`,
-    city_taken: () => "Someone else already claimed this city.",
-    wallet_has_city: (d) => `This wallet already founded ${d.city?.city_name || "a city"}. It's one city per wallet.`,
-    already_listed: (d) => `${d.cityName} is already listed. We've selected it for you.`,
-    location_required: () => "We need your location to confirm you're in the city.",
-    location_too_rough: () => "Your location isn't precise enough. Turn on precise location / GPS and try again.",
-    chain_unavailable: () => "Couldn't reach the blockchain. Please try again in a minute.",
-    unknown_country: () => "Please pick a country.",
-    expired: () => "That message expired. Please try again.",
-  };
-
-  btn.addEventListener("click", async () => {
-    setErr("");
-    const addr = me(), wallet = V().wallet;
-    if (!addr || !wallet) { $("#wallet").scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" }); return; }
-    let target;
-    if (mode === "add") {
-      const name = $("#add-name").value.trim().replace(/\s+/g, " "), cc = $("#add-country").value;
-      if (!/^[\p{L}\p{M}][\p{L}\p{M} .'’-]{0,58}[\p{L}\p{M}.]$/u.test(name)) return setErr("Use letters only for the city name (spaces, - . ' are fine).");
-      if (!cc) return setErr("Please pick a country.");
-      const dup = cities.find((c) => c.cc === cc && c.n === norm(name));
-      if (dup) { select(dup, true); return setErr(`${dup.name} is already listed. We've selected it for you. (Different place with the same name? Stand in it and tap "Add it" from there.)`); }
-      target = `action=add&name=${encodeURIComponent(name)}&country=${cc}`;
-    } else target = `action=claim&city=${encodeURIComponent(selected.id)}&country=${selected.cc}`;
-    if (followHandle && !$("#follow-ok").checked) return setErr("Please follow Vicinity on X first, then tick the box.");
-
-    busy = true; btn.disabled = true;
-    try {
-      btn.textContent = "Getting your location…";
-      const loc = await getLocation();
-      // the same boundary check the server does, so people see the answer before signing anything
-      const here = await findCityAt(loc.lon, loc.lat);
-      const hereCity = here && parts.has(here.id) ? byId.get(parts.get(here.id)) : here;
-      if (mode === "claim") {
-        await loadBounds(selected.cc);
-        const a = areas.get(selected.id);
-        if (a ? !inArea(loc.lon, loc.lat, a.area) : kmBetween(loc.lat, loc.lon, selected.lat, selected.lon) > radiusOf(selected)) {
-          req("here", "bad", hereCity ? `You're in ${hereCity.name}, not ${selected.name}.` : `You're outside ${selected.name}'s boundary.`);
-          throw new Error(hereCity ? `You're in ${hereCity.name} right now. You can only claim the city you're standing in.` : `You're not inside ${selected.name} right now. Tap ◎ on the map to find the city you're in.`);
-        }
-        req("here", "ok", `You're in ${selected.name} ✓ (location not saved)`);
-      } else {
-        if (hereCity) { select(hereCity, true); throw new Error(`You're inside ${hereCity.name}, which is already on the map. Claim it instead of adding a new city.`); }
-        req("here", "ok", "Location checked ✓ (not saved)");
-      }
-      btn.textContent = "Check your wallet…";
-      const m = await (await fetch(`/api/message?address=${encodeURIComponent(addr)}&${target}`, { cache: "no-store" })).json();
-      if (!m.message) throw new Error("Couldn't prepare the message. Please try again.");
-      const sig = await wallet.signMessage(new TextEncoder().encode(m.message));
-      req("sign", "ok");
-      btn.textContent = "Claiming…";
-      const r = await fetch("/api/claim", { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ address: addr, message: m.message, signature: btoa(String.fromCharCode(...new Uint8Array(sig))), location: loc }) });
-      const d = await r.json();
-      if (!d.claimed) {
-        if (d.error === "already_listed" && byId.get(d.cityId)) select(byId.get(d.cityId), true);
-        if (d.error === "city_taken" && d.by && selected) { claims.set(selected.id, { wallet: d.by, city_name: selected.name, country: selected.cc, claimed_at: new Date().toISOString() }); renderList(); updateStats(); }
-        if (d.error === "not_enough_tokens") req("hold", "bad");
-        if (d.error === "vpn_detected" || d.error === "network_mismatch") req("here", "bad", "Your internet connection doesn't match your location.");
-        throw new Error((ERR[d.error] || (() => "Claim failed. Please try again."))(d));
-      }
-      req("hold", "ok");
-      if (!byId.has(d.cityId)) {
-        const c = { id: d.cityId, name: d.cityName, cc: d.country, adm: "", lat: Math.round(loc.lat * 10) / 10, lon: Math.round(loc.lon * 10) / 10, pop: 0, n: norm(d.cityName), added: true };
-        cities.push(c); byId.set(c.id, c); retick();
-      }
-      claims.set(d.cityId, { city_id: d.cityId, wallet: addr, city_name: d.cityName, country: d.country, claimed_at: d.claimedAt });
-      selected = byId.get(d.cityId); mode = "claim";
-      refreshPanel(); renderList(); updateStats(); renderFeed(); renderCoin(selected);
-      $("#claim-reqs").hidden = true; addForm.hidden = true;
-      $("#claim-done-title").textContent = `You founded ${d.cityName}!`;
-      $("#claim-done-text").textContent = `${d.cityName} is now linked to ${mask(addr)}. Keep holding ${fmt(MIN_HOLD)}+ $VICINITY: founders are re-checked at the Launchpad snapshot.`;
-      $("#claim-done").hidden = false;
-      V().toast?.(`📍 ${d.cityName} is yours`);
-      ripple(selected); ripple(selected, "255,90,54");
-      const rr = btn.getBoundingClientRect(); V().burst?.(rr.left + rr.width / 2, rr.top);
-    } catch (e) {
-      const msg = String(e?.message || "");
-      setErr(/reject|cancel|denied/i.test(msg) || e?.code === 4001 ? "Signing cancelled in your wallet. Nothing happened." : msg || "Claim failed. Please try again.");
-    } finally {
-      busy = false;
-      if ($("#claim-done").hidden) refreshPanel(true); else btn.disabled = true;
-    }
-  });
-
   /* =================== live claims feed + stats =================== */
   function updateStats() {
-    $("#cs-cities").textContent = fmt(cities.length - parts.size);
+    const communities = cities.length - parts.size - outside.size;
+    $("#cs-cities").textContent = fmt(communities);
     $("#cs-countries").textContent = fmt(new Set(cities.map((c) => c.cc)).size);
     $("#cs-claimed").textContent = fmt(claims.size);
+    $("#cs-open").textContent = fmt(Math.max(0, communities - claims.size));
+    $("#cs-members").textContent = fmt(totalMembers);
     $("#cs-status").textContent = open ? "Open" : "At launch";
+  }
+  /** Where verified members call home (public counts only), and the communities filling up fastest. */
+  async function refreshMembers() {
+    const d = await V().api?.("/api/members");
+    if (!d || !Array.isArray(d.communities)) return;
+    totalMembers = d.members || 0;
+    memberCount = new Map(d.communities.map((c) => [String(c.id), c.members]));
+    updateStats();
+    const list = $("#wanted-list");
+    if (!d.communities.length) { list.replaceChildren(el("li", "muted", "No members yet. Sign in and set your home community to put your city on this list.")); return; }
+    list.replaceChildren(...d.communities.slice(0, 24).map((c) => {
+      const li = el("li"), city = byId.get(String(c.id)), cl = claims.get(String(c.id));
+      const txt = el("div");
+      txt.append(el("strong", null, c.name), el("span", null, `${countries[c.country] || c.country} · ${fmt(c.members)} member${c.members === 1 ? "" : "s"}`));
+      li.append(txt, el("span", cl ? "tag tag--no" : "tag tag--ok", cl ? "Founded" : "Seat open"));
+      if (city) {
+        li.tabIndex = 0; li.style.cursor = "pointer";
+        li.addEventListener("click", () => { select(city, true); sec.scrollIntoView({ behavior: reduced ? "auto" : "smooth" }); });
+      }
+      return li;
+    }));
   }
   function renderFeed(fresh = new Set()) {
     const feed = $("#claim-feed");
@@ -808,7 +719,7 @@
       claims = new Map(cl.claims.map((c) => [c.city_id, c]));
       open = Boolean(cl.open);
       updateStats(); renderFeed(fresh);
-      if (fresh.size) { renderList(); refreshPanel(true); }
+      if (fresh.size) { renderList(); refreshPanel(); }
       needDraw = true; kick();
     } catch {}
   }
@@ -816,9 +727,8 @@
   async function load() {
     if (loaded) return; loaded = true;
     try {
-      const [data, off, wd, bi] = await Promise.all([
+      const [data, wd, bi] = await Promise.all([
         fetch("/data/cities.json").then((r) => r.json()),
-        fetch("/api/official", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
         fetch("/data/world.json").then((r) => r.json()).catch(() => null),        // map background (optional)
         fetch("/data/bounds/index.json").then((r) => r.json()).catch(() => null), // city boundaries (optional)
       ]);
@@ -839,16 +749,15 @@
       retick();
       await refreshClaims();
       retick();
-      const handle = (off.socials || []).find((h) => /^@[A-Za-z0-9_]{1,15}$/.test(h));
-      if (handle) { followHandle = handle; $("#req-follow").hidden = false; $("#follow-link").href = `https://x.com/${handle.slice(1)}`; $("#follow-link").textContent = `Follow ${handle} ↗`; }
       const counts = {}; for (const c of cities) if (!parts.has(c.id)) counts[c.cc] = (counts[c.cc] || 0) + 1;
       const opts = Object.keys(countries).sort((a, b) => countries[a].localeCompare(countries[b]));
       countryEl.append(...opts.filter((c) => counts[c]).map((c) => Object.assign(document.createElement("option"), { value: c, textContent: `${countries[c]} (${counts[c]})` })));
-      $("#add-country").append(Object.assign(document.createElement("option"), { value: "", textContent: "Choose a country" }),
-        ...opts.map((c) => Object.assign(document.createElement("option"), { value: c, textContent: countries[c] })));
       sec.classList.add("is-ready");
-      size(); renderList(); refreshPanel(); renderFeed();
-      setInterval(() => { if (!document.hidden && onScreen) refreshClaims(); }, 30000);
+      size(); renderList(); refreshPanel(); renderFeed(); refreshMembers();
+      setInterval(() => { if (!document.hidden && onScreen) { refreshClaims(); refreshMembers(); } }, 30000);
+      // arriving with ?city=<id> (from other pages): open that city
+      const want = new URLSearchParams(location.search).get("city");
+      if (want && byId.get(want)) select(byId.get(want), true);
     } catch {
       loaded = false;
       listEl.replaceChildren(el("li", "muted", "Couldn't load the city list. Refresh the page to try again."));

@@ -1,0 +1,193 @@
+<!--{"title": "Dashboard", "description": "Your live Vicinity dashboard: rank among all holders, your city and country, badges, the founder race, and local and national memes, check-ins and discussions.", "page": "dashboard", "scripts": ["ticker", "dashboard"]}-->
+    <!-- signed out -->
+    <section class="dash-out" id="dash-out" hidden>
+      <div class="wrap teaser">
+        <div class="teaser__copy">
+          <p class="kicker">Your dashboard</p>
+          <h1 class="page-title">Your city is talking.<br><span class="accent">You're not in it yet.</span></h1>
+          <p class="lead">Connect your wallet to see your live rank among every holder, your city's founder race, local memes, and who's checking in near you.</p>
+          <a class="btn btn--primary btn--lg" href="/connect">Connect &amp; sign in →</a>
+          <p class="tiny muted">Takes about a minute. Signing is free and isn't a transaction.</p>
+        </div>
+        <div class="teaser__preview" aria-hidden="true">
+          <div class="card blur-card"><span class="muted small">Your rank</span><strong>#???</strong><span class="muted small">of every holder</span></div>
+          <div class="card blur-card"><span class="muted small">Your city</span><strong>??? members</strong><span class="muted small">founder seat: ???</span></div>
+          <div class="card blur-card"><span class="muted small">This week's top meme</span><strong>▲ ???</strong><span class="muted small">locals only</span></div>
+          <span class="teaser__lock">🔒 Members only</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- first visit: place the person on the map -->
+    <section class="section section--tight" id="dash-onboard" hidden>
+      <div class="wrap">
+        <div class="onboard card">
+          <p class="kicker">Welcome, <span data-me-name>friend</span></p>
+          <h1 class="h2--sm">Let's put you on the map.</h1>
+          <ol class="onboard__steps">
+            <li class="is-ok"><span class="req__dot"></span><div><strong>Wallet verified</strong><p class="tiny muted mono" data-me-wallet></p></div></li>
+            <li class="is-ok"><span class="req__dot"></span><div><strong>Account linked</strong><p class="tiny muted" data-me-login></p></div></li>
+            <li id="ob-rank"><span class="req__dot"></span><div><strong>Your position among all holders</strong><p class="tiny muted" id="ob-rank-text">Checking the blockchain…</p></div></li>
+            <li id="ob-city"><span class="req__dot"></span><div><strong>Your community</strong><p class="tiny muted" id="ob-city-text">We use your location once to find the community you're in. It's never saved.</p>
+              <button class="btn btn--primary btn--sm" type="button" id="ob-locate">Find my community</button>
+              <ul class="nearby-list" id="ob-nearby" hidden></ul></div></li>
+          </ol>
+          <p class="wallet__error" id="ob-error" role="alert" hidden></p>
+          <button class="btn btn--primary btn--lg" type="button" id="ob-enter" hidden>Enter my dashboard →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- the dashboard -->
+    <section class="dash" id="dash-main" hidden>
+      <div class="wrap">
+        <div class="lost-alert" id="lost-alert" role="alert" hidden></div>
+        <div class="dash-top">
+          <div class="idcard card">
+            <div class="idcard__avatar" id="me-avatar" aria-hidden="true">V</div>
+            <div class="idcard__who">
+              <p class="idcard__name"><strong data-me-name>—</strong> <span class="role-pill" id="me-role">Member</span></p>
+              <p class="tiny muted"><span data-me-login></span> · <span class="mono" data-me-wallet></span> <button class="link-btn link-btn--tiny" type="button" id="me-copy">Copy</button></p>
+              <p class="tiny muted">📍 <span id="me-home">—</span> · <span class="live-note"><span class="live-dot" aria-hidden="true"></span> <span id="me-checked">live</span></span></p>
+            </div>
+            <button class="link-btn" type="button" id="me-logout">Sign out</button>
+          </div>
+          <div class="stat-row stat-row--dash">
+            <div class="stat"><span class="stat__label">You hold</span><strong id="d-amount">—</strong><span class="stat__sub" id="d-amount-sub">$VICINITY</span></div>
+            <div class="stat"><span class="stat__label">Rank · all holders</span><strong id="d-rank">—</strong><span class="stat__sub" id="d-rank-sub"></span></div>
+            <div class="stat"><span class="stat__label">Rank · <span id="d-city-label">your city</span></span><strong id="d-crank">—</strong><span class="stat__sub" id="d-crank-sub"></span></div>
+            <div class="stat"><span class="stat__label">Rank · <span id="d-country-label">your country</span></span><strong id="d-nrank">—</strong><span class="stat__sub" id="d-nrank-sub"></span></div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="dash-col">
+            <section class="card progress-card" id="progress" aria-labelledby="progress-title">
+              <div class="progress-card__head">
+                <div><p class="kicker">Founder race</p><h2 class="h2--sm" id="progress-title">Claim <span id="p-city">your city</span></h2></div>
+                <strong class="progress-card__pct" id="p-pct">0%</strong>
+              </div>
+              <div class="bar" aria-hidden="true"><span id="p-bar"></span></div>
+              <ol class="psteps" id="p-steps"></ol>
+              <p class="small" id="p-note"></p>
+              <button class="btn btn--primary btn--block" type="button" id="p-claim" hidden>Claim it now (checks your location)</button>
+              <p class="wallet__error" id="p-error" role="alert" hidden></p>
+            </section>
+
+            <section class="card feed" id="feed" aria-label="Feeds">
+              <div class="feed__head">
+                <div class="seg" role="tablist" aria-label="Local or national">
+                  <button type="button" role="tab" data-scope="city" aria-selected="true"><span id="f-city">Local</span></button>
+                  <button type="button" role="tab" data-scope="country" aria-selected="false"><span id="f-country">National</span></button>
+                </div>
+                <div class="chips" role="tablist" aria-label="Kind of post">
+                  <button type="button" role="tab" data-kind="meme" aria-selected="true">😂 Memes</button>
+                  <button type="button" role="tab" data-kind="checkin" aria-selected="false">📍 Check-ins</button>
+                  <button type="button" role="tab" data-kind="talk" aria-selected="false">💬 Discussions</button>
+                </div>
+              </div>
+              <form class="composer" id="composer" novalidate>
+                <label class="sr-only" for="c-text">Write a post</label>
+                <textarea id="c-text" rows="2" maxlength="1000" placeholder="Share a local meme…"></textarea>
+                <div class="composer__row">
+                  <label class="btn btn--glass btn--sm" id="c-pic-label"><input type="file" id="c-pic" accept="image/*" class="sr-only">🖼 Picture</label>
+                  <img class="composer__preview" id="c-preview" alt="" hidden>
+                  <span class="tiny muted" id="c-count"></span>
+                  <button class="btn btn--primary btn--sm" type="submit" id="c-post">Post</button>
+                </div>
+                <p class="wallet__error" id="c-err" role="alert" hidden></p>
+              </form>
+              <div class="feed__sort"><span class="tiny muted" id="f-note"></span><div class="seg seg--sm"><button type="button" data-sort="new" aria-pressed="true">New</button><button type="button" data-sort="top" aria-pressed="false">Top this week</button></div></div>
+              <ul class="posts" id="posts"><li class="muted">Loading…</li></ul>
+              <button class="link-btn" type="button" id="f-more" hidden>Load more</button>
+            </section>
+          </div>
+
+          <aside class="dash-col dash-col--side">
+            <section class="card community-card" id="community">
+              <div class="community-card__head">
+                <div class="coin-disc" aria-hidden="true"><span id="cc-face">—</span></div>
+                <div><p class="kicker">Your community</p><h2 class="h2--sm" id="cc-name">—</h2><p class="tiny muted" id="cc-ticker"></p></div>
+              </div>
+              <dl class="kv">
+                <div><dt>Members</dt><dd id="cc-members">—</dd></div>
+                <div><dt>Holders here</dt><dd id="cc-holders">—</dd></div>
+                <div><dt>City Founder</dt><dd id="cc-founder">—</dd></div>
+              </dl>
+              <p class="small fomo" id="cc-fomo"></p>
+              <p class="kicker">Top holders here</p>
+              <ol class="mini-board" id="cc-top"><li class="muted small">Live at launch.</li></ol>
+              <button class="btn btn--glass btn--sm btn--block" type="button" id="cc-share">Invite locals · copy link</button>
+            </section>
+
+            <section class="card" id="national">
+              <p class="kicker">Your country</p>
+              <h2 class="h2--sm" id="nc-name">—</h2>
+              <dl class="kv">
+                <div><dt>Members</dt><dd id="nc-members">—</dd></div>
+                <div><dt>Country Manager</dt><dd id="nc-manager">—</dd></div>
+              </dl>
+            </section>
+
+            <section class="card" id="badges">
+              <p class="kicker">Badges · checked live</p>
+              <ul class="badge-grid" id="badge-grid"></ul>
+            </section>
+
+            <section class="card mod-card" id="mod" hidden>
+              <p class="kicker">🛡️ Moderator tools · <span id="mod-scope"></span></p>
+              <h2 class="h2--sm">Reports</h2>
+              <ul class="posts posts--compact" id="mod-posts"></ul>
+              <h2 class="h2--sm">"Add my town" requests</h2>
+              <ul class="req-list" id="mod-requests"></ul>
+            </section>
+
+            <section class="card" id="request">
+              <p class="kicker">Missing town?</p>
+              <h2 class="h2--sm">Ask for your town</h2>
+              <p class="small muted">Stand in the town and send a request. Your Country Manager approves new communities; approved towns join the map at the next update.</p>
+              <form class="req-form" id="req-form" novalidate>
+                <label class="sr-only" for="req-name">Town name</label>
+                <input id="req-name" type="text" maxlength="60" autocomplete="off" placeholder="e.g. New Hartford">
+                <button class="btn btn--glass btn--sm" type="submit">Send (checks location)</button>
+              </form>
+              <ul class="req-list" id="req-mine"></ul>
+              <p class="wallet__error" id="req-err" role="alert" hidden></p>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- roles: always visible -->
+    <section class="section section--panel" id="roles">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Roles &amp; responsibilities</p>
+          <h2>Who does what, now and when Vicinity goes live.</h2>
+          <p class="muted">Every role except Admin is earned from live blockchain data. Fall below the line and the role moves to the next person on the next check.</p>
+        </div>
+        <div class="roles-table">
+          <article class="card role-row" data-role="holder">
+            <div class="role-row__who"><span class="role__icon" aria-hidden="true">🏅</span><div><h3>Holder</h3><p class="tiny muted">Holds any $VICINITY · vote ×1</p></div></div>
+            <div><p class="role-row__when">Now</p><ul><li>Verify your wallet and set your home community.</li><li>Post memes, check-ins and discussions in your city and country.</li><li>Vote in the weekly meme vote. Report spam and scams.</li></ul></div>
+            <div><p class="role-row__when">When Vicinity goes live</p><ul><li>Your rank among all holders updates every minute.</li><li>Only holders can post and vote, so keep holding.</li><li>Holders at the snapshot become Founding Supporters: early access to city coins on the Launchpad.</li></ul></div>
+          </article>
+          <article class="card role-row" data-role="founder">
+            <div class="role-row__who"><span class="role__icon" aria-hidden="true">👑</span><div><h3>City Founder</h3><p class="tiny muted">Claimed a city · 1,000,000+ · vote ×2</p></div></div>
+            <div><p class="role-row__when">Now</p><ul><li>Get founder-ready: set your home community and plan to hold 1,000,000+.</li><li>Bring your locals in: every member makes the city's coin stronger.</li><li>Claims open the moment $VICINITY launches. First come, first served.</li></ul></div>
+            <div><p class="role-row__when">When Vicinity goes live</p><ul><li>Claim the city while standing inside its boundary.</li><li>Moderate the city's feed: review reports, hide spam.</li><li>Keep 1,000,000+ or lose the seat on the next check.</li><li>At the Launchpad: first right to launch the city's one official coin.</li></ul></div>
+          </article>
+          <article class="card role-row" data-role="manager">
+            <div class="role-row__who"><span class="role__icon" aria-hidden="true">🛡️</span><div><h3>Country Manager</h3><p class="tiny muted">The founder holding the most in a country · vote ×3</p></div></div>
+            <div><p class="role-row__when">Now</p><ul><li>The seat opens once the first cities are claimed. Until then the Admin covers it.</li><li>Become a City Founder first: the manager is chosen among founders.</li></ul></div>
+            <div><p class="role-row__when">When Vicinity goes live</p><ul><li>Approve or decline "add my town" requests in your country.</li><li>Hide posts anywhere in the country; ban scammers from the country's feeds.</li><li>Help review city coin launches in the country.</li><li>The seat moves live to whichever founder holds the most; it's fixed at the Launchpad snapshot.</li></ul></div>
+          </article>
+          <article class="card role-row" data-role="admin">
+            <div class="role-row__who"><span class="role__icon" aria-hidden="true">⚙️</span><div><h3>Admin</h3><p class="tiny muted">The Vicinity team · team wallets are public</p></div></div>
+            <div><p class="role-row__when">Now</p><ul><li>Runs the map, approves new communities anywhere, and handles disputes.</li><li>Moderates every feed and can ban across all of Vicinity.</li><li>Publishes team wallets and announces the snapshot time.</li></ul></div>
+            <div><p class="role-row__when">When Vicinity goes live</p><ul><li>Publishes the only official contract address.</li><li>Runs the Launchpad and its schedule.</li><li>Releases claims that broke the rules (fake location, VPN).</li></ul></div>
+          </article>
+        </div>
+      </div>
+    </section>

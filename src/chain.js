@@ -7,8 +7,11 @@
  * Without it we fall back to the public endpoint, which can't list holders.
  */
 import { OFFICIAL } from "./official.js";
+import { base58Encode } from "./solana.js";
 
 const PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const TOKEN_2022 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const PROGRAM_LABELS = {
   "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P": "pump.fun bonding curve",
   "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA": "PumpSwap liquidity pool",
@@ -115,4 +118,106 @@ export async function getHoldings(env, owners, mint, fetchImpl = fetch) {
     }
   }
   return out;
+}
+
+const b64bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+/**
+ * EVERY holder of the token, biggest first: [[owner, amount], ...]. Uses getProgramAccounts and only
+ * downloads the owner + amount of each token account (40 bytes each), so it stays fast with
+ * thousands of holders. Needs an RPC that allows it (Helius does; the public endpoint may refuse).
+ */
+export async function getAllHolders(env, mint, fetchImpl = fetch) {
+  const facts = await getTokenFacts(env, mint, fetchImpl);
+  const program = facts.program === "Token-2022" ? TOKEN_2022 : TOKEN_PROGRAM;
+  const filters = [{ memcmp: { offset: 0, bytes: mint } }];
+  if (program === TOKEN_PROGRAM) filters.unshift({ dataSize: 165 });
+  const accs = await rpc(env, "getProgramAccounts", [program, { encoding: "base64", dataSlice: { offset: 32, length: 40 }, filters }], fetchImpl);
+  const byOwner = new Map();
+  for (const a of accs || []) {
+    const data = a?.account?.data;
+    const bytes = b64bytes(Array.isArray(data) ? data[0] : "");
+    if (bytes.length < 40) continue;
+    let raw = 0n;
+    for (let i = 7; i >= 0; i--) raw = (raw << 8n) | BigInt(bytes[32 + i]);
+    if (raw === 0n) continue;
+    const owner = base58Encode(bytes.subarray(0, 32));
+    byOwner.set(owner, (byOwner.get(owner) || 0n) + raw);
+  }
+  const list = [...byOwner].sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0)).map(([o, raw]) => [o, uiAmount(raw, facts.decimals)]);
+
+  // label pools / bonding curves (program-owned wallets) among the biggest holders, and team wallets
+  const top = list.slice(0, 50).map(([o]) => o);
+  const labels = new Map();
+  if (top.length) {
+    const acc = await rpc(env, "getMultipleAccounts", [top, { encoding: "base64", dataSlice: { offset: 0, length: 0 } }], fetchImpl);
+    top.forEach((o, i) => { const l = PROGRAM_LABELS[acc?.value?.[i]?.owner]; if (l) labels.set(o, l); });
+  }
+  for (const w of OFFICIAL.teamWallets || []) labels.set(w, "Team wallet (public)");
+  return { facts, list, labels };
+}
+
+/**
+ * The holder list, ranked. Pools and bonding curves are shown but not ranked: ranks are for people.
+ * Kept for 60 seconds per server, so a busy dashboard doesn't hammer the blockchain.
+ *   { facts, rows: [{ owner, amount, percent, rank|null, label }], byOwner: Map(owner → row), people, at }
+ */
+const snaps = new Map();
+export function holderSnapshot(env, mint, fetchImpl = fetch, maxAgeMs = 60_000) {
+  const hit = snaps.get(mint);
+  if (hit && Date.now() - hit.at < maxAgeMs) return hit.promise;
+  const promise = getAllHolders(env, mint, fetchImpl).then(({ facts, list, labels }) => {
+    let rank = 0;
+    const rows = list.map(([owner, amount]) => {
+      const label = labels.get(owner) || null;
+      const pool = label && !label.startsWith("Team");
+      return { owner, amount, percent: facts.supply ? (amount / facts.supply) * 100 : 0, rank: pool ? null : ++rank, label };
+    });
+    return { facts, rows, byOwner: new Map(rows.map((r) => [r.owner, r])), people: rank, at: new Date().toISOString() };
+  });
+  snaps.set(mint, { at: Date.now(), promise });
+  promise.catch(() => snaps.delete(mint));
+  return promise;
+}
+export const _resetSnapshots = () => snaps.clear();
+
+/**
+ * Where does this wallet stand? Rank among people (pools excluded), how many hold more,
+ * and how much more it takes to pass the wallet just above.
+ */
+export function rankOf(snap, owner) {
+  const row = snap.byOwner.get(owner);
+  const out = { amount: row ? row.amount : 0, rank: row ? row.rank : null, total: snap.people, label: row ? row.label : null,
+    percent: row ? row.percent : 0, percentile: null, next: null };
+  if (row && row.rank) {
+    out.percentile = Math.max(0.01, (row.rank / Math.max(1, snap.people)) * 100);
+    const above = snap.rows.find((r) => r.rank === row.rank - 1);
+    if (above) out.next = { rank: above.rank, amount: above.amount, gap: Math.max(0, above.amount - row.amount) };
+  } else {
+    const last = [...snap.rows].reverse().find((r) => r.rank);
+    if (last) out.next = { rank: last.rank, amount: last.amount, gap: last.amount };
+  }
+  return out;
+}
+
+/**
+ * Proof of wallet ownership for apps that can't sign messages (FOMO, exchanges' web wallets...):
+ * the wallet sends an exact, unusual amount of SOL to anyone (itself is easiest). Only the owner
+ * can make a transfer leave the wallet, so finding it proves ownership. Looks at the wallet's
+ * latest transactions after `sinceMs`. Returns true or false.
+ */
+export async function findTransfer(env, address, lamports, sinceMs, fetchImpl = fetch) {
+  const sigs = await rpc(env, "getSignaturesForAddress", [address, { limit: 20 }], fetchImpl);
+  const recent = (sigs || []).filter((s) => !s.err && (!s.blockTime || s.blockTime * 1000 >= sinceMs - 120_000)).slice(0, 10);
+  for (const s of recent) {
+    const tx = await rpc(env, "getTransaction", [s.signature, { encoding: "jsonParsed", maxSupportedTransactionVersion: 0, commitment: "confirmed" }], fetchImpl);
+    if (!tx || tx.meta?.err) continue;
+    const all = [...(tx.transaction?.message?.instructions || []), ...(tx.meta?.innerInstructions || []).flatMap((x) => x.instructions || [])];
+    for (const ix of all) {
+      const p = ix.parsed;
+      if (ix.program === "system" && p && (p.type === "transfer" || p.type === "transferWithSeed") &&
+          p.info?.source === address && Number(p.info?.lamports) === lamports) return true;
+    }
+  }
+  return false;
 }

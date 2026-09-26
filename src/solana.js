@@ -65,15 +65,21 @@ export const CITY_NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} .'’-]{0,58}[\p{L}\p{M}.]
  *   verify → prove you own the wallet
  *   claim  → claim a listed city (by id)
  *   add    → add a missing city and claim it
+ *   login  → sign in to your dashboard (with a 2-digit check number when a phone signs in for a computer)
  */
-export function statementFor(action = "verify", { cityId, name, country } = {}) {
+export function statementFor(action = "verify", { cityId, name, country, pin } = {}) {
   if (action === "claim") return `Claim city #${cityId} (${country}) for this wallet on Vicinity. ${FREE}`;
   if (action === "add") return `Add the city "${name}" (${country}) and claim it for this wallet on Vicinity. ${FREE}`;
+  if (action === "login" && pin) return `Sign in to Vicinity on my other device (check number ${pin}). ${FREE}`;
+  if (action === "login") return `Sign in to Vicinity with this wallet. ${FREE}`;
   return MESSAGE_STATEMENT;
 }
 
 function parseStatement(line) {
   if (line === MESSAGE_STATEMENT) return { action: "verify" };
+  if (line === statementFor("login")) return { action: "login" };
+  const pin = line.match(/^Sign in to Vicinity on my other device \(check number ([0-9]{2})\)\. /);
+  if (pin && line === statementFor("login", { pin: pin[1] })) return { action: "login", pin: pin[1] };
   let m = line.match(/^Claim city #([0-9]{1,10}|c[0-9]{1,9}) \(([A-Z]{2})\) for this wallet on Vicinity\. /);
   if (m && line === statementFor("claim", { cityId: m[1], country: m[2] })) return { action: "claim", cityId: m[1], country: m[2] };
   m = line.match(/^Add the city "(.+)" \(([A-Z]{2})\) and claim it for this wallet on Vicinity\. /);

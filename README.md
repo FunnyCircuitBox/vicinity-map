@@ -1,55 +1,74 @@
 # Vicinity
 
-**Represent your city.** A community map where every city gets its own page: check in, post local memes, vote weekly. Cities rank by community activity, not coin holdings.
+**One city. One coin. One community.** Every real city on one map, with real boundaries. Each community gets one official coin, local leaders, and its own feed of memes, check-ins, discussions and weekly votes. $VICINITY holders get in first; the Vicinity Launchpad opens November 10, 2026.
 
 Live: https://vicinitycity.net (backup address: https://vicinity-map.noyonsakibul.workers.dev)
 
 > **No token exists yet.** $VICINITY has not launched. No presale, no airdrop, no contract address. When it launches, the official address will be published in this README and on the website. Use the site's "Is this link really Vicinity?" checker if in doubt.
 
 ## What's on the site
-- Scroll-driven animated story (pure SVG + JavaScript, no video files, respects "reduce motion")
-- Playable weekly-vote demo (fictional towns, nothing saved)
-- **Solana wallet connect + ownership verification**: the visitor signs a plain-text message (not a transaction). The server checks the Ed25519 signature. Nothing is stored.
-- **Official link checker**: paste a link, @handle or token address to see if it's official
-- **Live token proof + top holders** read straight from the Solana blockchain
-- **Claim your city**: 13,000+ cities in 244 countries on an interactive world map with real city boundaries that never overlap (zoom into a country to see them; ◎ finds the city you're in). One wallet = one city. To claim, a wallet must hold 1,000,000+ $VICINITY (checked live on-chain), be inside the city's boundary (browser location, checked once, never saved) and sign a free message. Missing cities can be added (the adder becomes its founder). Claims open automatically once `VICINITY_MINT` is set.
-- Dark / light theme toggle (follows the device setting until you pick one)
-- Token facts, roadmap, transparency, FAQ, risk disclosure
+Separate pages, one shared menu (top menu on computers, bottom menu bar on phones), dark / light theme:
+- **/** How it works: the problem, a step-by-step walkthrough on the real New York City boundaries (73 places, one coin), how the app works, incentives for holders and for the Launchpad, roles, roadmap, FAQ (including why $VICINITY launched on pump.fun).
+- **/token** Token and holders: live facts from the blockchain (minting/freezing off, supply, price), every holder in a table that scrolls on its own, "where does this wallet stand?" (paste any address: rank, percentile, gap to the next wallet), the official token list and link checker.
+- **/cities** The live map: 8,000+ communities in 244 countries with real boundaries that never overlap; claimed vs open; the communities filling up. The claim button leads to the dashboard.
+- **/launchpad** Countdown to November 10, the planned phases, who gets in first, add-to-calendar.
+- **/connect** Sign in: any Solana wallet (Wallet Standard + older ones; app links for phones), "wallet on my phone" (QR code + 2-digit check number), and a tiny-transfer proof for app wallets that can't connect (FOMO, exchanges). Then X or Google. One wallet + one login = one account.
+- **/dashboard** Onboarding (live rank + home community from one location check; people in empty land pick one of the three nearest communities), then: role and badges re-checked live (selling removes them), founder race with a progress bar and claiming, community and country cards, local and national feeds (memes with pictures, check-ins, discussions, weekly votes weighted 1 / 2 founders / 3 managers), reports, moderator tools, "add my town" requests, roles and responsibilities.
 
 ## Project layout
 ```
-public/            Website (HTML, CSS, JS, logo, security headers)
-src/index.js       Backend (Cloudflare Worker): API routes
-src/solana.js      Base58, sign-in message format, Ed25519 signature check
-src/official.js    The single list of official links + the checker logic
-src/chain.js       Read-only Solana data: token facts, top holders, wallet balance
-src/cities.js      City list + boundary file loaders, claim rules (1M hold, inside the city's boundary)
-src/geo.js         Boundary file format, point-in-boundary checks
-src/store.js       Claims database (Cloudflare D1) — tables are created automatically
-public/data/       cities.json (GeoNames, CC BY 4.0), world.json (Natural Earth),
-                   bounds/XX.txt city boundaries per country (OpenStreetMap, ODbL): built by scripts/boundaries/
-migrations/        The database schema, for reference
-scripts/           Build helpers: self-hosted fonts; boundaries/ builds the city boundaries
-test/              Automated tests (npm test)
-wrangler.jsonc     Cloudflare settings (build runs fonts + tests before every deploy)
+public/             Website: generated pages (*.html), style.css, page scripts (site.js shared; home, token, cities,
+                    launchpad, connect, dashboard, wallets.js), data/ (cities, boundaries, NYC example, stats)
+scripts/pages/      Page sources + shared layout: edit here, then `npm run pages` (a test checks public/*.html match)
+scripts/demo/       nyc.mjs builds the New York City example + site numbers (`npm run demo:nyc`)
+scripts/boundaries/ Builds the city boundaries; scripts/cities/ builds the city list
+src/index.js        Backend (Cloudflare Worker): API routes, claims
+src/auth.js         Accounts: wallet sign-in, X / Google, phone pairing, tiny-transfer proof, sessions
+src/me.js           Dashboard data: live rank, roles, badges, claim progress, home community
+src/social.js       Feeds, votes, reports, moderation, "add my town" requests
+src/roles.js        Admin / country manager / city founder / holder, checked live
+src/community.js    Which community a point is in (or the three nearest)
+src/chain.js        Read-only Solana data: token facts, every holder + ranks, balances, transfer lookup
+src/solana.js       Base58, sign-in message format, Ed25519 signature check
+src/official.js     Official links, the mint address, the Launchpad opening time
+src/cities.js       City list + boundary file loaders, claim rules; src/geo.js boundary format
+src/store.js        Database schema (Cloudflare D1; tables are created automatically) + claims store
+test/               Automated tests (npm test); test/helpers/d1.js runs the real SQL on Node's SQLite
+wrangler.jsonc      Cloudflare settings (build copies fonts + QR library, builds pages, runs tests)
 ```
+
+## Settings (Cloudflare → Workers → vicinity-map → Settings → Variables and secrets)
+| Name | What it's for |
+|---|---|
+| `SOLANA_RPC_URL` (secret) | A Helius (or similar) RPC URL. Needed for the full holder list and ranks; without it only the top 20 show. |
+| `VICINITY_MINT` | The token address, the moment it launches (or edit `src/official.js`). |
+| `ADMIN_WALLETS` | Your wallet address(es), comma-separated: admin powers on the dashboard. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (secret) | Google sign-in. Google Cloud console → Credentials → OAuth client (Web application). Redirect URI: `https://vicinitycity.net/api/auth/google/callback` |
+| `X_CLIENT_ID`, `X_CLIENT_SECRET` (secret) | X sign-in. X developer portal → your app → User authentication settings (OAuth 2.0, Web App). Callback: `https://vicinitycity.net/api/auth/x/callback` |
+
+Without the Google / X settings the site works, but new people can't finish signing up (the connect page says sign-in is being switched on).
 
 ## API
 | Route | What it does |
 |---|---|
-| `GET /api/health` | Backend status |
-| `GET /api/official` | Official links list |
-| `GET /api/check?q=` | Is this link / address / handle official? |
-| `GET /api/message?address=` | The exact text a wallet signs |
-| `POST /api/verify` | Checks `{address, message, signature(base64)}` |
-| `GET /api/token` / `GET /api/holders` | Live token facts / top holders |
-| `GET /api/claims` | Every claimed city + community-added cities |
-| `POST /api/claim` | `{address, message, signature, location}` → claim a city |
+| `GET /api/health` · `GET /api/official` · `GET /api/check?q=` | Status · official links (+ Launchpad time) · is this link official? |
+| `GET /api/message?address=&action=verify / login / claim / add` | The exact text a wallet signs |
+| `POST /api/verify` | Checks `{address, message, signature(base64)}`; nothing stored |
+| `GET /api/token` · `GET /api/holders` · `GET /api/rank?address=` | Live token facts + price · every holder (top 1,000) · one wallet's rank |
+| `GET /api/claims` · `POST /api/claim` · `GET /api/moderator?country=` | Claimed cities · claim (signed in, or signed message) · a country's manager |
+| `GET /api/members` | How many members call each community home (no names) |
+| `POST /api/auth/wallet` · `POST /api/auth/transfer` (+ `/check`) · `POST /api/pair` · `GET /api/pair?code=` · `POST /api/pair/finish` | Prove a wallet |
+| `GET /api/auth/google/start` (and `/x/`, `/callback`) · `POST /api/auth/logout` | X / Google sign-in |
+| `GET /api/me` · `POST /api/home` | Dashboard data · set home community |
+| `GET /api/posts` · `POST /api/posts` · `POST /api/posts/vote` (`report`, `hide`, `ban`) · `GET /api/mod` · `GET /api/media/:id` | Feeds and moderation |
+| `GET /api/requests` · `POST /api/requests` · `POST /api/requests/decide` | "Add my town" requests |
 
-## Moderating city claims
-Cloudflare dashboard → Storage & databases → D1 → `vicinity-claims` → Console.
+## Moderating
+Most moderation happens on the dashboard: city founders hide posts in their city; country managers hide posts, ban people and decide "add my town" requests in their country; admins (`ADMIN_WALLETS`) can do all of it everywhere. For anything else: Cloudflare dashboard → Storage & databases → D1 → `vicinity-claims` → Console.
+- Release a claim that broke the rules: `DELETE FROM claims WHERE city_id = '5142056';`
 - Hide a community-added city: `UPDATE added_cities SET hidden = 1 WHERE id = 3;`
-- Release a claim: `DELETE FROM claims WHERE city_id = '5142056';`
+- Lift a ban: `DELETE FROM bans WHERE user_id = 12;`
+- Approved "add my town" requests: `SELECT * FROM requests WHERE status = 'approved';` (add them to the city list at the next map build)
 - Before the Launchpad snapshot, re-check every founder still holds 1,000,000+ $VICINITY.
 
 ## Run it locally
@@ -57,6 +76,7 @@ Requires Node.js 20+.
 ```
 npm install
 npm test          # automated tests
+npm run pages     # rebuild public/*.html after editing scripts/pages/
 npm run dev       # local copy at http://localhost:8787
 ```
 
@@ -86,13 +106,14 @@ npm run check:boundaries   # exact geometry, every pair of neighbouring areas; e
 The test suite runs the same check, so a build with overlapping areas can't deploy.
 
 ## Deploy
-Cloudflare Workers Builds deploys automatically whenever `main` changes on GitHub. Before each deploy, `npm run build` copies the fonts and runs every test, so a failing test blocks the deploy.
+Cloudflare Workers Builds deploys automatically whenever `main` changes on GitHub. Before each deploy, `npm run build` copies the fonts and the QR library, builds the pages and runs every test, so a failing test blocks the deploy.
 
 ## Security
-- Verifying a wallet stores nothing. Claiming a city stores only: city, wallet, time (shown publicly). Visitor locations are never stored.
-- Wallet verification is message signing only: it can't move funds. Messages are bound to this site's address and expire after 10 minutes.
-- Strict Content-Security-Policy: the page loads nothing from other websites (fonts are self-hosted).
-- A community-added city's center is the adder's location rounded to ~10 km.
+- One account per person: one wallet + one X or Google login, enforced by the database. From Google we keep the account id and first name; from X the id, @handle and name. No e-mail, no passwords. Only a hash of the session cookie is stored (HttpOnly, Secure, SameSite=Lax, 30 days); requests that change something must come from this site (Origin check).
+- Wallet proof is message signing (can't move funds; bound to this site; expires after 10 minutes), a phone approving a computer's sign-in (one-time code + 2-digit check number), or a tiny exact SOL transfer the wallet sends to itself (only the owner can send from a wallet).
+- Locations are never stored: they're used once to find a community, check in, claim, or request a town (requests keep a point rounded to about 5 km). VPNs, proxies and far-away connections are refused.
+- Feeds never show wallets; contract addresses can't be posted; pictures are checked (JPEG / PNG / WebP only) and served with a locked-down policy.
+- Strict Content-Security-Policy: pages load nothing from other websites (fonts and the QR library are self-hosted; the price is fetched by the server).
 - Found a security problem? Please report it privately via GitHub's "Security" tab.
 
 ## Risk disclosure

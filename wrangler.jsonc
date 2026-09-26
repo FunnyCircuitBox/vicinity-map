@@ -12,7 +12,8 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*"],
+    "not_found_handling": "404-page"
   },
   // City claims database. Cloudflare creates it automatically on the first deploy;
   // the tables are created by the code the first time they're used.

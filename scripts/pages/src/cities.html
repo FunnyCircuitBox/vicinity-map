@@ -1,0 +1,98 @@
+<!--{"title": "Claim a city", "description": "Every real city on one map, with real boundaries that never overlap. See which cities are claimed, which are open, and claim yours from your dashboard.", "page": "cities", "scripts": ["ticker", "cities"]}-->
+    <section class="page-hero page-hero--map" id="cities">
+      <div class="wrap">
+        <p class="kicker kicker--live"><span class="live-dot" aria-hidden="true"></span>Live map</p>
+        <h1 class="page-title">Claim your city.</h1>
+        <p class="lead">One wallet. One city. Be its founder. Every city has a real boundary: stand inside yours, hold 1,000,000+ $VICINITY, and claim it from your dashboard.</p>
+
+        <div class="city-stats" aria-live="polite">
+          <div><strong id="cs-cities">…</strong><span>communities</span></div>
+          <div><strong id="cs-countries">…</strong><span>countries</span></div>
+          <div class="is-claimed"><strong id="cs-claimed">…</strong><span>claimed</span></div>
+          <div class="is-open"><strong id="cs-open">…</strong><span>still open</span></div>
+          <div><strong id="cs-members">…</strong><span>verified members</span></div>
+          <div><strong id="cs-status">…</strong><span>claims</span></div>
+        </div>
+
+        <div class="citymap card">
+          <div class="citymap__stage">
+            <canvas id="city-canvas" width="1200" height="480" role="img" tabindex="0" aria-label="Zoomable world map of every listed city. Zoom into a country to see each city's boundary. Use arrow keys to move and + or − to zoom."></canvas>
+            <p class="citymap__tip" id="city-tip" hidden></p>
+            <div class="map-ctrl" role="group" aria-label="Map controls">
+              <button type="button" id="map-in" aria-label="Zoom in">+</button>
+              <button type="button" id="map-out" aria-label="Zoom out">−</button>
+              <button type="button" id="map-reset" aria-label="Show the whole world">⟲</button>
+              <button type="button" id="map-locate" aria-label="Find the city I'm in" title="Find the city I'm in">◎</button>
+              <button type="button" id="map-style" aria-label="Show the coloured map" aria-pressed="false" title="Show the coloured map">🎨</button>
+              <span id="map-zoom-level" aria-live="polite">1.0×</span>
+            </div>
+            <p class="map-hint" id="map-hint">Click the map first, then scroll to zoom (or use + and −)</p>
+          </div>
+          <p class="citymap__legend"><span><span class="dot dot--open"></span> Open</span><span><span class="dot dot--claimed"></span> Claimed</span><span><span class="dot dot--mine"></span> Yours</span><span><span class="line line--real"></span> Official city boundary + the land nearest to it</span><span><span class="line line--near"></span> No official boundary: the land nearest the city</span><span class="citymap__how">Drag to move · scroll, pinch or double-tap to zoom · tap a country or a city · ◎ finds yours · 🎨 colours</span></p>
+          <div class="claim-feed-wrap">
+            <p class="kicker kicker--live"><span class="live-dot" aria-hidden="true"></span>Latest claims · live</p>
+            <ul class="claim-feed" id="claim-feed" aria-live="polite"><li class="claim-feed__empty">Loading…</li></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--tight">
+      <div class="wrap">
+        <div class="citybox">
+          <div class="city-search card">
+            <div class="city-search__row">
+              <label class="sr-only" for="city-q">Search cities</label>
+              <input id="city-q" type="search" autocomplete="off" spellcheck="false" maxlength="60" placeholder="Search a city, e.g. Utica, Dhaka, Lagos">
+              <label class="sr-only" for="city-country">Country</label>
+              <select id="city-country"><option value="">All countries</option></select>
+              <label class="sr-only" for="city-filter">Show</label>
+              <select id="city-filter"><option value="all">All</option><option value="open">Open</option><option value="claimed">Claimed</option></select>
+            </div>
+            <ul class="city-list" id="city-list" aria-live="polite"><li class="muted">Loading the world…</li></ul>
+            <p class="tiny muted" id="city-count"></p>
+            <a class="link-btn" href="/dashboard#request">Town missing? Ask your Country Manager to add it →</a>
+          </div>
+
+          <div class="claim card" id="claim-panel" aria-live="polite">
+            <p class="kicker" id="claim-kicker">Pick a city</p>
+            <h3 id="claim-title">Search or tap the map</h3>
+            <p class="muted small" id="claim-sub">Choose the city you live in. You can only found one, so choose well.</p>
+
+            <div class="coin-preview" id="coin-preview" hidden>
+              <div class="coin-disc" id="coin-disc" aria-hidden="true"><span id="coin-face">UTI</span></div>
+              <div class="coin-preview__text">
+                <p class="coin-preview__label">City coin preview</p>
+                <strong id="coin-ticker">$UTICA</strong>
+                <span id="coin-name">Utica Coin</span>
+                <span class="tiny muted" id="coin-where"></span>
+              </div>
+              <p class="tiny muted coin-preview__note">Sample only. City coins launch on the Vicinity Launchpad; nothing is minted yet.</p>
+              <p class="tiny coin-same" id="coin-same" hidden></p>
+            </div>
+            <p class="mod-row small" id="mod-row" hidden></p>
+            <p class="members-row small" id="members-row" hidden></p>
+
+            <ol class="reqs reqs--static" id="claim-reqs">
+              <li><span class="req__dot"></span><div><strong>Sign in</strong><p class="tiny muted">Wallet + X or Google. One account per person.</p></div></li>
+              <li><span class="req__dot"></span><div><strong>Hold 1,000,000+ $VICINITY</strong><p class="tiny muted">Checked live on the blockchain. Keep holding: founders are re-checked all the time and at the Launchpad snapshot.</p></div></li>
+              <li><span class="req__dot"></span><div><strong>Stand in the city</strong><p class="tiny muted">Your location is checked once against the city's real boundary, and your internet connection must be local too. VPNs are blocked. We never save it.</p></div></li>
+            </ol>
+
+            <a class="btn btn--primary btn--block" id="claim-btn" href="/dashboard">Claim a city in your dashboard →</a>
+            <p class="tiny muted claim-note" id="claim-note">Claiming happens in your dashboard, where your wallet, holdings and location are checked together.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section--panel" id="wanted">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Most wanted</p>
+          <h2 class="h2--sm">Communities filling up.</h2>
+          <p class="muted">Where verified members already call home. A community with members but no founder is a seat waiting for someone.</p>
+        </div>
+        <ol class="wanted" id="wanted-list"><li class="muted">Loading…</li></ol>
+      </div>
+    </section>
